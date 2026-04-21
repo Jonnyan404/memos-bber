@@ -21,7 +21,7 @@
     "message": "저장"
   },
   "supportedMemosVersion": {
-    "message": "Memos v0.15.0 - 0.26.x 호환"
+    "message": "Memos v0.15.0 - 0.27.x 호환"
   },
   "placeApiUrl": {
     "message": "Memos 사이트 URL"
@@ -158,7 +158,7 @@
   "langChineseSimplified": {
     "message": "简体中文"
   },
-    "langJapanese": {
+  "langJapanese": {
     "message": "日本語"
   },
   "langKorean": {

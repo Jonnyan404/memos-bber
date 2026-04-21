@@ -129,7 +129,7 @@ function initProportionalEditorResize() {
         if (shouldApply) applyScaleInstant(s)
         try {
           if (window.localStorage) window.localStorage.setItem(storageKey, String(s))
-        } catch (_) {}
+        } catch (_) { }
       })
     } catch (_) {
       // ignore
@@ -152,7 +152,7 @@ function initProportionalEditorResize() {
       startY = ev.clientY
       startScale = readCurrentScale()
       computeMaxScale()
-      try { handle.setPointerCapture(ev.pointerId) } catch (_) {}
+      try { handle.setPointerCapture(ev.pointerId) } catch (_) { }
       ev.preventDefault()
     })
 
@@ -187,7 +187,7 @@ function initProportionalEditorResize() {
         if (typeof s === 'number' && Number.isFinite(s)) {
           try {
             if (window.localStorage) window.localStorage.setItem(storageKey, String(s))
-          } catch (_) {}
+          } catch (_) { }
           chrome.storage.sync.set({ [storageKey]: s })
         }
       } catch (_) {
@@ -313,6 +313,10 @@ function get_info(callback) {
 
 function isV023Flavor(info) {
   return info && info.apiFlavor === 'v023' && window.MemosApiV023
+}
+
+function isV027Flavor(info) {
+  return info && info.apiFlavor === 'v027' && window.MemosApiV027
 }
 
 function isV1Flavor(info) {
@@ -584,7 +588,7 @@ function hydrateV1PreviewImages(info) {
     window.addEventListener('unload', function () {
       const list = window.__memosBberObjectUrls || []
       for (let i = 0; i < list.length; i++) {
-        try { URL.revokeObjectURL(list[i]) } catch (_) {}
+        try { URL.revokeObjectURL(list[i]) } catch (_) { }
       }
       window.__memosBberObjectUrls = []
     })
@@ -664,7 +668,7 @@ function hydrateV1PreviewImages(info) {
       .catch(function () {
         // Don't break previews for modern versions where plain <img src> may already work.
         if (hasAuthAttr) {
-          try { img.removeAttribute('src') } catch (_) {}
+          try { img.removeAttribute('src') } catch (_) { }
         }
       })
   })
@@ -757,10 +761,10 @@ $(document).on('drop', '.upload-item', function (e) {
     uploadDragIndex != null
       ? uploadDragIndex
       : Number(
-          (e.originalEvent && e.originalEvent.dataTransfer
-            ? e.originalEvent.dataTransfer.getData('text/plain')
-            : '') || -1
-        )
+        (e.originalEvent && e.originalEvent.dataTransfer
+          ? e.originalEvent.dataTransfer.getData('text/plain')
+          : '') || -1
+      )
   const toIndex = Number($(this).data('index'))
 
   uploadDragIndex = null
@@ -798,9 +802,13 @@ $(document).on('click', '.upload-del', function () {
 
     const doDelete = isV1Flavor(info) && window.MemosApiV1 && typeof window.MemosApiV1.deleteResource === 'function' && inferredId != null
       ? function (onOk, onFail) {
-          window.MemosApiV1.deleteResource(info, inferredId, onOk, onFail)
+        window.MemosApiV1.deleteResource(info, inferredId, onOk, onFail)
+      }
+      : isV027Flavor(info) && window.MemosApiV027 && typeof window.MemosApiV027.deleteAttachment === 'function'
+        ? function (onOk, onFail) {
+          window.MemosApiV027.deleteAttachment(info, name, onOk, onFail)
         }
-      : function (onOk, onFail) {
+        : function (onOk, onFail) {
           $.ajax({
             url: info.apiUrl + 'api/v1/' + name,
             type: 'DELETE',
@@ -842,16 +850,80 @@ function uploadImage(file) {
     }
 
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
       const base64String = e.target.result.split(',')[1];
+      if (isV027Flavor(info)) {
+        uploadImageNowV027(base64String, file);
+        return
+      }
       uploadImageNow(base64String, file);
     };
-    reader.onerror = function(error) {
+    reader.onerror = function (error) {
       console.error('Error reading file:', error);
     };
     reader.readAsDataURL(file);
   })
 };
+
+function uploadImageNowV027(base64String, file) {
+  get_info(function (info) {
+    if (!info.status) {
+      $.message({ message: msg('placeApiUrl') })
+      return
+    }
+
+    let old_name = file.name.split('.')
+    let file_ext = file.name.split('.').pop()
+    let now = dayjs().format('YYYYMMDDHHmmss')
+    let new_name = old_name[0] + '_' + now + '.' + file_ext
+
+    window.MemosApiV027.createAttachment(
+      info,
+      {
+        filename: new_name,
+        type: file.type,
+        content: base64String
+      },
+      function (entity) {
+        if (entity && entity.name) {
+          const tail = String(entity.name).split('/').pop()
+          relistNow.push({
+            id: tail || '',
+            name: entity.name,
+            filename: entity.filename || new_name,
+            createTime: entity.createTime,
+            type: entity.type
+          })
+          chrome.storage.sync.set(
+            {
+              open_action: '',
+              open_content: '',
+              resourceIdList: relistNow
+            },
+            function () {
+              $.message({ message: msg('picSuccess') })
+            }
+          )
+          return
+        }
+
+        chrome.storage.sync.set(
+          {
+            open_action: '',
+            open_content: '',
+            resourceIdList: []
+          },
+          function () {
+            $.message({ message: msg('picFailed') })
+          }
+        )
+      },
+      function () {
+        $.message({ message: msg('picFailed') })
+      }
+    )
+  })
+}
 
 function uploadImageNowV1(file) {
   get_info(function (info) {
@@ -907,7 +979,7 @@ function uploadImageNowV1(file) {
 }
 
 function uploadImageNow(base64String, file) {
-  get_info(function(info) {
+  get_info(function (info) {
     if (info.status) {
       let old_name = file.name.split('.');
       let file_ext = file.name.split('.').pop();
@@ -917,10 +989,10 @@ function uploadImageNow(base64String, file) {
       var showTag = info.showtag
       var nowTag = $("textarea[name=text]").val().match(/(#[^\s#]+)/)
       var sendvisi = info.memo_lock || ''
-      if(nowTag){
-        if(nowTag[1] == showTag){
+      if (nowTag) {
+        if (nowTag[1] == showTag) {
           sendvisi = 'PUBLIC'
-        }else if(nowTag[1] == hideTag){
+        } else if (nowTag[1] == hideTag) {
           sendvisi = 'PRIVATE'
         }
       }
@@ -970,7 +1042,7 @@ function uploadImageNow(base64String, file) {
           $.message({ message: msg('picFailed') })
         }
       )
-    }else {
+    } else {
       $.message({
         message: msg('placeApiUrl')
       })
@@ -985,42 +1057,68 @@ $('#saveKey').click(function () {
   }
   var apiTokens = $('#apiTokens').val()
 
+  const persistDetectedFlavor = function (flavor) {
+    const normalized = flavor === 'v020' || flavor === 'v021' ? 'v1' : flavor
+    if (normalized === 'v1' || normalized === 'v023' || normalized === 'v027' || normalized === 'modern') {
+      chrome.storage.sync.set({ apiFlavor: normalized })
+    }
+  }
+
+  const probeFlavorAfterSave = function () {
+    if (window.MemosApiV023 && typeof window.MemosApiV023.probeApiFlavor === 'function') {
+      if (window.MemosApiV027 && typeof window.MemosApiV027.probeApiFlavor === 'function') {
+        window.MemosApiV027.probeApiFlavor(apiUrl, apiTokens, function (res027) {
+          const flavor027 = res027 && res027.flavor ? res027.flavor : ''
+          if (flavor027 === 'v027') {
+            persistDetectedFlavor(flavor027)
+            return
+          }
+
+          window.MemosApiV023.probeApiFlavor(apiUrl, apiTokens, function (res) {
+            const flavor = res && res.flavor ? res.flavor : ''
+            persistDetectedFlavor(flavor)
+          })
+        })
+        return
+      }
+
+      window.MemosApiV023.probeApiFlavor(apiUrl, apiTokens, function (res) {
+        const flavor = res && res.flavor ? res.flavor : ''
+        persistDetectedFlavor(flavor)
+      })
+    }
+  }
+
+  const saveConnectionInfo = function (auth) {
+    chrome.storage.sync.set(
+      {
+        apiUrl: apiUrl,
+        apiTokens: apiTokens,
+        userid: auth && auth.userId != null ? auth.userId : '',
+        memoUiPath: auth && auth.uiPath ? auth.uiPath : 'memos',
+        apiFlavor: ''
+      },
+      function () {
+        $.message({ message: msg('saveSuccess') })
+        $('#blog_info').hide()
+        probeFlavorAfterSave()
+      }
+    )
+  }
+
   window.MemosApi.authWithFallback(apiUrl, apiTokens, function (auth) {
     if (!auth || auth.userId == null) {
       $.message({ message: msg('invalidToken') })
       return
     }
 
-    chrome.storage.sync.set(
-      {
-        apiUrl: apiUrl,
-        apiTokens: apiTokens,
-        userid: auth.userId,
-        memoUiPath: auth.uiPath || 'memos',
-        apiFlavor: ''
-      },
-      function () {
-        $.message({ message: msg('saveSuccess') })
-        $('#blog_info').hide()
-
-        // Auto-detect API flavor once; keep default behavior when unknown.
-        if (window.MemosApiV023 && typeof window.MemosApiV023.probeApiFlavor === 'function') {
-          window.MemosApiV023.probeApiFlavor(apiUrl, apiTokens, function (res) {
-            const flavor = res && res.flavor ? res.flavor : ''
-            const normalized = flavor === 'v020' || flavor === 'v021' ? 'v1' : flavor
-            if (normalized === 'v1' || normalized === 'v023' || normalized === 'modern') {
-              chrome.storage.sync.set({ apiFlavor: normalized })
-            }
-          })
-        }
-      }
-    )
+    saveConnectionInfo(auth)
   })
 });
 
 $('#opensite').click(function () {
   get_info(function (info) {
-    chrome.tabs.create({url:info.apiUrl})
+    chrome.tabs.create({ url: info.apiUrl })
   })
 })
 
@@ -1087,6 +1185,24 @@ $('#tags').click(function () {
             $.message({ message: msg('placeApiUrl') })
           }
         )
+      } else if (isV027Flavor(info)) {
+        const filterExpr = info.userid
+          ? 'creator == ' + JSON.stringify('users/' + info.userid)
+          : ''
+        window.MemosApiV027.listMemos(
+          info,
+          {
+            pageSize: 1000,
+            state: 'NORMAL',
+            filterExpr: filterExpr
+          },
+          function (res) {
+            onTagsData(res && res.raw ? res.raw : res)
+          },
+          function () {
+            $.message({ message: msg('placeApiUrl') })
+          }
+        )
       } else {
         window.MemosApi.fetchMemosWithFallback(
           info,
@@ -1105,7 +1221,7 @@ $('#tags').click(function () {
   })
 })
 
-$(document).on("click","#hideTag",function () {
+$(document).on("click", "#hideTag", function () {
   $('#taghide').slideToggle(500)
 })
 
@@ -1126,105 +1242,120 @@ $('#saveTag').click(function () {
 })
 
 $('#lock').click(function () {
-  $("#lock-wrapper").toggleClass( "!hidden", 1000 );
+  $("#lock-wrapper").toggleClass("!hidden", 1000);
 })
 
-$(document).on("click",".item-lock",function () {
-  $("#lock-wrapper").toggleClass( "!hidden", 1000 );
+$(document).on("click", ".item-lock", function () {
+  $("#lock-wrapper").toggleClass("!hidden", 1000);
   $("#lock-now").text($(this).text())
-    _this = $(this)[0].dataset.type;
-    currentMemoLock = _this
-    chrome.storage.sync.set(
-      {memo_lock: _this}
-    )
+  _this = $(this)[0].dataset.type;
+  currentMemoLock = _this
+  chrome.storage.sync.set(
+    { memo_lock: _this }
+  )
 })
 
 $('#search').click(function () {
   get_info(function (info) {
-  const pattern = $("textarea[name=text]").val()
-  var parent = `users/${info.userid}`;
-  const patternLiteral = JSON.stringify(String(pattern || ''))
-  var filter = "?filter=" + encodeURIComponent(`visibility in ["PUBLIC","PROTECTED"] && content.contains(${patternLiteral})`);
-  if (info.status) {
-    $("#randomlist").html('').hide()
-    var searchDom = ""
-    if(pattern){
-      const runSearch = isV023Flavor(info)
+    const pattern = $("textarea[name=text]").val()
+    var parent = `users/${info.userid}`;
+    const patternLiteral = JSON.stringify(String(pattern || ''))
+    var filter = "?filter=" + encodeURIComponent(`visibility in ["PUBLIC","PROTECTED"] && content.contains(${patternLiteral})`);
+    if (info.status) {
+      $("#randomlist").html('').hide()
+      var searchDom = ""
+      if (pattern) {
+        const runSearch = isV023Flavor(info)
           ? function (onOk, onFail) {
-              const filterExpr = window.MemosApiV023.buildFilter({
-                visibilities: ['PUBLIC', 'PROTECTED'],
-                contentSearch: String(pattern)
-              })
-              window.MemosApiV023.listMemos(info, { pageSize: 1000, filterExpr: filterExpr }, onOk, onFail)
-            }
-          : isV1Flavor(info)
+            const filterExpr = window.MemosApiV023.buildFilter({
+              visibilities: ['PUBLIC', 'PROTECTED'],
+              contentSearch: String(pattern)
+            })
+            window.MemosApiV023.listMemos(info, { pageSize: 1000, filterExpr: filterExpr }, onOk, onFail)
+          }
+          : isV027Flavor(info)
             ? function (onOk, onFail) {
+              window.MemosApiV027.listMemos(
+                info,
+                {
+                  pageSize: 1000,
+                  state: 'NORMAL',
+                  filterExpr: `visibility in ["PUBLIC","PROTECTED"] && content.contains(${patternLiteral})`
+                },
+                function (res) {
+                  onOk(res && res.raw ? res.raw : res)
+                },
+                onFail
+              )
+            }
+            : isV1Flavor(info)
+              ? function (onOk, onFail) {
                 window.MemosApiV1.listMemos(info, { limit: 1000, rowStatus: 'NORMAL', contentSearch: String(pattern) }, onOk, onFail)
               }
-          : function (onOk, onFail) {
-              window.MemosApi.fetchMemosWithFallback(info, filter, onOk, onFail)
-            }
+              : function (onOk, onFail) {
+                window.MemosApi.fetchMemosWithFallback(info, filter, onOk, onFail)
+              }
 
-      runSearch(
-        function (data) {
-          let searchData = window.MemosApi.extractMemosListFromResponse(data)
-          if(searchData.length == 0){
-            $.message({
-              message: msg('searchNone')
-            })
-          }else{
-            for(var i=0;i < searchData.length;i++){
-              var memosID = getMemoUid(searchData[i])
-              var timeText = memoFromNow(searchData[i])
-              searchDom += '<div class="random-item"><div class="random-time"><span id="random-link" data-uid="'+memosID+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M864 640a32 32 0 0 1 64 0v224.096A63.936 63.936 0 0 1 864.096 928H159.904A63.936 63.936 0 0 1 96 864.096V159.904C96 124.608 124.64 96 159.904 96H384a32 32 0 0 1 0 64H192.064A31.904 31.904 0 0 0 160 192.064v639.872A31.904 31.904 0 0 0 192.064 864h639.872A31.904 31.904 0 0 0 864 831.936V640zm-485.184 52.48a31.84 31.84 0 0 1-45.12-.128 31.808 31.808 0 0 1-.128-45.12L815.04 166.048l-176.128.736a31.392 31.392 0 0 1-31.584-31.744 32.32 32.32 0 0 1 31.84-32l255.232-1.056a31.36 31.36 0 0 1 31.584 31.584L924.928 388.8a32.32 32.32 0 0 1-32 31.84 31.392 31.392 0 0 1-31.712-31.584l.736-179.392L378.816 692.48z" fill="#666" data-spm-anchor-id="a313x.7781069.0.i12" class="selected"/></svg></span><span id="random-delete" data-name="'+searchData[i].name+'" data-id="'+(searchData[i].id != null ? searchData[i].id : '')+'" data-uid="'+memosID+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M224 322.6h576c16.6 0 30-13.4 30-30s-13.4-30-30-30H224c-16.6 0-30 13.4-30 30 0 16.5 13.5 30 30 30zm66.1-144.2h443.8c16.6 0 30-13.4 30-30s-13.4-30-30-30H290.1c-16.6 0-30 13.4-30 30s13.4 30 30 30zm339.5 435.5H394.4c-16.6 0-30 13.4-30 30s13.4 30 30 30h235.2c16.6 0 30-13.4 30-30s-13.4-30-30-30z" fill="#666"/><path d="M850.3 403.9H173.7c-33 0-60 27-60 60v360c0 33 27 60 60 60h676.6c33 0 60-27 60-60v-360c0-33-27-60-60-60zm-.1 419.8l-.1.1H173.9l-.1-.1V464l.1-.1h676.2l.1.1v359.7z" fill="#666"/></svg></span>'+timeText+'</div><div class="random-content">'+(searchData[i].content || '').replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div>'
-              var resources = (searchData[i].attachments && searchData[i].attachments.length > 0) ? searchData[i].attachments : ((searchData[i].resources && searchData[i].resources.length > 0) ? searchData[i].resources : (searchData[i].resourceList || []));
-              if(resources && resources.length > 0){
-                for(var j=0;j < resources.length;j++){
-                  var restype = (resources[j].type || '').slice(0,5);
-                  var resexlink = resources[j].externalLink
-                  var resLink = '',fileId=''
-                  if(resexlink){
-                    resLink = resexlink
-                  }else{
-                    resLink = buildV1ResourceStreamUrl(info, resources[j])
-                }
-                  if (!resLink) {
-                    continue
-                  }
-                  if(restype == 'image'){
-                    if (isV1Flavor(info)) {
-                      searchDom += '<img class="random-image" data-auth-src="'+resLink+'"/>'
+        runSearch(
+          function (data) {
+            let searchData = window.MemosApi.extractMemosListFromResponse(data)
+            if (searchData.length == 0) {
+              $.message({
+                message: msg('searchNone')
+              })
+            } else {
+              for (var i = 0; i < searchData.length; i++) {
+                var memosID = getMemoUid(searchData[i])
+                var timeText = memoFromNow(searchData[i])
+                searchDom += '<div class="random-item"><div class="random-time"><span id="random-link" data-uid="' + memosID + '"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M864 640a32 32 0 0 1 64 0v224.096A63.936 63.936 0 0 1 864.096 928H159.904A63.936 63.936 0 0 1 96 864.096V159.904C96 124.608 124.64 96 159.904 96H384a32 32 0 0 1 0 64H192.064A31.904 31.904 0 0 0 160 192.064v639.872A31.904 31.904 0 0 0 192.064 864h639.872A31.904 31.904 0 0 0 864 831.936V640zm-485.184 52.48a31.84 31.84 0 0 1-45.12-.128 31.808 31.808 0 0 1-.128-45.12L815.04 166.048l-176.128.736a31.392 31.392 0 0 1-31.584-31.744 32.32 32.32 0 0 1 31.84-32l255.232-1.056a31.36 31.36 0 0 1 31.584 31.584L924.928 388.8a32.32 32.32 0 0 1-32 31.84 31.392 31.392 0 0 1-31.712-31.584l.736-179.392L378.816 692.48z" fill="#666" data-spm-anchor-id="a313x.7781069.0.i12" class="selected"/></svg></span><span id="random-delete" data-name="' + searchData[i].name + '" data-id="' + (searchData[i].id != null ? searchData[i].id : '') + '" data-uid="' + memosID + '"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M224 322.6h576c16.6 0 30-13.4 30-30s-13.4-30-30-30H224c-16.6 0-30 13.4-30 30 0 16.5 13.5 30 30 30zm66.1-144.2h443.8c16.6 0 30-13.4 30-30s-13.4-30-30-30H290.1c-16.6 0-30 13.4-30 30s13.4 30 30 30zm339.5 435.5H394.4c-16.6 0-30 13.4-30 30s13.4 30 30 30h235.2c16.6 0 30-13.4 30-30s-13.4-30-30-30z" fill="#666"/><path d="M850.3 403.9H173.7c-33 0-60 27-60 60v360c0 33 27 60 60 60h676.6c33 0 60-27 60-60v-360c0-33-27-60-60-60zm-.1 419.8l-.1.1H173.9l-.1-.1V464l.1-.1h676.2l.1.1v359.7z" fill="#666"/></svg></span>' + timeText + '</div><div class="random-content">' + (searchData[i].content || '').replace(/!\[.*?\]\((.*?)\)/g, ' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g, ' <a href="$2" target="_blank">$1</a> ') + '</div>'
+                var resources = (searchData[i].attachments && searchData[i].attachments.length > 0) ? searchData[i].attachments : ((searchData[i].resources && searchData[i].resources.length > 0) ? searchData[i].resources : (searchData[i].resourceList || []));
+                if (resources && resources.length > 0) {
+                  for (var j = 0; j < resources.length; j++) {
+                    var restype = (resources[j].type || '').slice(0, 5);
+                    var resexlink = resources[j].externalLink
+                    var resLink = '', fileId = ''
+                    if (resexlink) {
+                      resLink = resexlink
                     } else {
-                      searchDom += '<img class="random-image" src="'+resLink+'"/>'
+                      resLink = buildV1ResourceStreamUrl(info, resources[j])
+                    }
+                    if (!resLink) {
+                      continue
+                    }
+                    if (restype == 'image') {
+                      if (isV1Flavor(info)) {
+                        searchDom += '<img class="random-image" data-auth-src="' + resLink + '"/>'
+                      } else {
+                        searchDom += '<img class="random-image" src="' + resLink + '"/>'
+                      }
+                    }
+                    if (restype !== 'image') {
+                      searchDom += '<a target="_blank" rel="noreferrer" href="' + resLink + '">' + resources[j].filename + '</a>'
                     }
                   }
-                  if(restype !== 'image'){
-                    searchDom += '<a target="_blank" rel="noreferrer" href="'+resLink+'">'+resources[j].filename+'</a>'
-                  }
                 }
+                searchDom += '</div>'
               }
-              searchDom += '</div>'
+              window.ViewImage && ViewImage.init('.random-image')
+              $("#randomlist").html(searchDom).slideDown(500);
+              hydrateV1PreviewImages(info)
             }
-            window.ViewImage && ViewImage.init('.random-image')
-            $("#randomlist").html(searchDom).slideDown(500);
-            hydrateV1PreviewImages(info)
+          },
+          function (xhr) {
+            $.message({ message: msg('searchNone') })
           }
-        },
-        function (xhr) {
-          $.message({ message: msg('searchNone') })
-        }
-      )
-    }else{
+        )
+      } else {
+        $.message({
+          message: msg('searchNow')
+        })
+      }
+    } else {
       $.message({
-        message: msg('searchNow')
+        message: msg('placeApiUrl')
       })
     }
-  } else {
-    $.message({
-      message: msg('placeApiUrl')
-    })
-  }
-})
+  })
 })
 
 $('#random').click(function () {
@@ -1233,15 +1364,30 @@ $('#random').click(function () {
     if (info.status) {
       $("#randomlist").html('').hide()
       const runRandom = isV023Flavor(info)
+        ? function (onOk, onFail) {
+          const filterExpr = window.MemosApiV023.buildFilter({ visibilities: ['PUBLIC', 'PROTECTED'] })
+          window.MemosApiV023.listMemos(info, { pageSize: 1000, filterExpr: filterExpr }, onOk, onFail)
+        }
+        : isV027Flavor(info)
           ? function (onOk, onFail) {
-              const filterExpr = window.MemosApiV023.buildFilter({ visibilities: ['PUBLIC', 'PROTECTED'] })
-              window.MemosApiV023.listMemos(info, { pageSize: 1000, filterExpr: filterExpr }, onOk, onFail)
-            }
+            window.MemosApiV027.listMemos(
+              info,
+              {
+                pageSize: 1000,
+                state: 'NORMAL',
+                filterExpr: 'visibility in ["PUBLIC","PROTECTED"]'
+              },
+              function (res) {
+                onOk(res && res.raw ? res.raw : res)
+              },
+              onFail
+            )
+          }
           : isV1Flavor(info)
             ? function (onOk, onFail) {
-                window.MemosApiV1.listMemos(info, { limit: 1000, rowStatus: 'NORMAL' }, onOk, onFail)
-              }
-          : function (onOk, onFail) {
+              window.MemosApiV1.listMemos(info, { limit: 1000, rowStatus: 'NORMAL' }, onOk, onFail)
+            }
+            : function (onOk, onFail) {
               const filter = "?filter=" + encodeURIComponent(`visibility in ["PUBLIC","PROTECTED"]`);
               window.MemosApi.fetchMemosWithFallback(info, filter, onOk, onFail)
             }
@@ -1265,102 +1411,102 @@ $('#random').click(function () {
   })
 })
 
-function randDom(randomData){
+function randDom(randomData) {
   get_info(function (info) {
-  var memosID = getMemoUid(randomData)
-  var timeText = memoFromNow(randomData)
-  var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-uid="'+memosID+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M864 640a32 32 0 0 1 64 0v224.096A63.936 63.936 0 0 1 864.096 928H159.904A63.936 63.936 0 0 1 96 864.096V159.904C96 124.608 124.64 96 159.904 96H384a32 32 0 0 1 0 64H192.064A31.904 31.904 0 0 0 160 192.064v639.872A31.904 31.904 0 0 0 192.064 864h639.872A31.904 31.904 0 0 0 864 831.936V640zm-485.184 52.48a31.84 31.84 0 0 1-45.12-.128 31.808 31.808 0 0 1-.128-45.12L815.04 166.048l-176.128.736a31.392 31.392 0 0 1-31.584-31.744 32.32 32.32 0 0 1 31.84-32l255.232-1.056a31.36 31.36 0 0 1 31.584 31.584L924.928 388.8a32.32 32.32 0 0 1-32 31.84 31.392 31.392 0 0 1-31.712-31.584l.736-179.392L378.816 692.48z" fill="#666" data-spm-anchor-id="a313x.7781069.0.i12" class="selected"/></svg></span><span id="random-delete" data-uid="'+memosID+'" data-name="'+randomData.name+'" data-id="'+(randomData && randomData.id != null ? randomData.id : '')+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M224 322.6h576c16.6 0 30-13.4 30-30s-13.4-30-30-30H224c-16.6 0-30 13.4-30 30 0 16.5 13.5 30 30 30zm66.1-144.2h443.8c16.6 0 30-13.4 30-30s-13.4-30-30-30H290.1c-16.6 0-30 13.4-30 30s13.4 30 30 30zm339.5 435.5H394.4c-16.6 0-30 13.4-30 30s13.4 30 30 30h235.2c16.6 0 30-13.4 30-30s-13.4-30-30-30z" fill="#666"/><path d="M850.3 403.9H173.7c-33 0-60 27-60 60v360c0 33 27 60 60 60h676.6c33 0 60-27 60-60v-360c0-33-27-60-60-60zm-.1 419.8l-.1.1H173.9l-.1-.1V464l.1-.1h676.2l.1.1v359.7z" fill="#666"/></svg></span>'+timeText+'</div><div class="random-content">'+(randomData && randomData.content ? randomData.content : '').replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div>'
-  var resources = (randomData.attachments && randomData.attachments.length > 0) ? randomData.attachments : ((randomData.resources && randomData.resources.length > 0) ? randomData.resources : (randomData.resourceList || []));
-  if(resources && resources.length > 0){
-    for(var j=0;j < resources.length;j++){
-      var restype = (resources[j].type || '').slice(0,5);
-      var resexlink = resources[j].externalLink
-      var resLink = '',fileId=''
-      if(resexlink){
-        resLink = resexlink
-      }else{
-        resLink = buildV1ResourceStreamUrl(info, resources[j])
-      }
-      if (!resLink) {
-        continue
-      }
-      if(restype == 'image'){
-        if (isV1Flavor(info)) {
-          randomDom += '<img class="random-image" data-auth-src="'+resLink+'"/>'
+    var memosID = getMemoUid(randomData)
+    var timeText = memoFromNow(randomData)
+    var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-uid="' + memosID + '"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M864 640a32 32 0 0 1 64 0v224.096A63.936 63.936 0 0 1 864.096 928H159.904A63.936 63.936 0 0 1 96 864.096V159.904C96 124.608 124.64 96 159.904 96H384a32 32 0 0 1 0 64H192.064A31.904 31.904 0 0 0 160 192.064v639.872A31.904 31.904 0 0 0 192.064 864h639.872A31.904 31.904 0 0 0 864 831.936V640zm-485.184 52.48a31.84 31.84 0 0 1-45.12-.128 31.808 31.808 0 0 1-.128-45.12L815.04 166.048l-176.128.736a31.392 31.392 0 0 1-31.584-31.744 32.32 32.32 0 0 1 31.84-32l255.232-1.056a31.36 31.36 0 0 1 31.584 31.584L924.928 388.8a32.32 32.32 0 0 1-32 31.84 31.392 31.392 0 0 1-31.712-31.584l.736-179.392L378.816 692.48z" fill="#666" data-spm-anchor-id="a313x.7781069.0.i12" class="selected"/></svg></span><span id="random-delete" data-uid="' + memosID + '" data-name="' + randomData.name + '" data-id="' + (randomData && randomData.id != null ? randomData.id : '') + '"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M224 322.6h576c16.6 0 30-13.4 30-30s-13.4-30-30-30H224c-16.6 0-30 13.4-30 30 0 16.5 13.5 30 30 30zm66.1-144.2h443.8c16.6 0 30-13.4 30-30s-13.4-30-30-30H290.1c-16.6 0-30 13.4-30 30s13.4 30 30 30zm339.5 435.5H394.4c-16.6 0-30 13.4-30 30s13.4 30 30 30h235.2c16.6 0 30-13.4 30-30s-13.4-30-30-30z" fill="#666"/><path d="M850.3 403.9H173.7c-33 0-60 27-60 60v360c0 33 27 60 60 60h676.6c33 0 60-27 60-60v-360c0-33-27-60-60-60zm-.1 419.8l-.1.1H173.9l-.1-.1V464l.1-.1h676.2l.1.1v359.7z" fill="#666"/></svg></span>' + timeText + '</div><div class="random-content">' + (randomData && randomData.content ? randomData.content : '').replace(/!\[.*?\]\((.*?)\)/g, ' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g, ' <a href="$2" target="_blank">$1</a> ') + '</div>'
+    var resources = (randomData.attachments && randomData.attachments.length > 0) ? randomData.attachments : ((randomData.resources && randomData.resources.length > 0) ? randomData.resources : (randomData.resourceList || []));
+    if (resources && resources.length > 0) {
+      for (var j = 0; j < resources.length; j++) {
+        var restype = (resources[j].type || '').slice(0, 5);
+        var resexlink = resources[j].externalLink
+        var resLink = '', fileId = ''
+        if (resexlink) {
+          resLink = resexlink
         } else {
-          randomDom += '<img class="random-image" src="'+resLink+'"/>'
+          resLink = buildV1ResourceStreamUrl(info, resources[j])
+        }
+        if (!resLink) {
+          continue
+        }
+        if (restype == 'image') {
+          if (isV1Flavor(info)) {
+            randomDom += '<img class="random-image" data-auth-src="' + resLink + '"/>'
+          } else {
+            randomDom += '<img class="random-image" src="' + resLink + '"/>'
+          }
+        }
+        if (restype !== 'image') {
+          randomDom += '<a target="_blank" rel="noreferrer" href="' + resLink + '">' + resources[j].filename + '</a>'
         }
       }
-      if(restype !== 'image'){
-        randomDom += '<a target="_blank" rel="noreferrer" href="'+resLink+'">'+resources[j].filename+'</a>'
-      }
     }
-  }
-  randomDom += '</div>'
-  window.ViewImage && ViewImage.init('.random-image')
-  $("#randomlist").html(randomDom).slideDown(500);
-  hydrateV1PreviewImages(info)
+    randomDom += '</div>'
+    window.ViewImage && ViewImage.init('.random-image')
+    $("#randomlist").html(randomDom).slideDown(500);
+    hydrateV1PreviewImages(info)
   })
 }
 
-$(document).on("click","#random-link",function () {
+$(document).on("click", "#random-link", function () {
   var memoUid = $("#random-link").data('uid');
   get_info(function (info) {
     const path = (info.memoUiPath || 'memos').replace(/^\/+|\/+$/g, '')
-    chrome.tabs.create({url:info.apiUrl + path + "/" + memoUid})
+    chrome.tabs.create({ url: info.apiUrl + path + "/" + memoUid })
   })
 })
 
-$(document).on("click","#random-delete",function () {
-get_info(function (info) {
-  // var memoUid = $("#random-delete").data('uid');
-  var memosName = $("#random-delete").data('name');
-  var memoId = $("#random-delete").data('id');
+$(document).on("click", "#random-delete", function () {
+  get_info(function (info) {
+    // var memoUid = $("#random-delete").data('uid');
+    var memosName = $("#random-delete").data('name');
+    var memoId = $("#random-delete").data('id');
 
-  // v0.20/v0.21: archive memo via API v1 PATCH /api/v1/memo/:id
-  if (isV1Flavor(info) && memoId) {
-    window.MemosApiV1.patchMemo(
-      info,
-      memoId,
-      { rowStatus: 'ARCHIVED' },
-      function () {
-        $("#randomlist").html('').hide()
-        $.message({ message: msg('archiveSuccess') })
-      },
-      function () {
-        $.message({ message: msg('archiveFailed') })
-      }
-    )
-    return
-  }
-
-  var deleteUrl = info.apiUrl+'api/v1/'+memosName
-  $.ajax({
-    url:deleteUrl,
-    type:"PATCH",
-    data:JSON.stringify({
-      // 'uid': memoUid,
-      'state': "ARCHIVED"
-    }),
-    contentType:"application/json",
-    dataType:"json",
-    headers : {'Authorization':'Bearer ' + info.apiTokens},
-    success: function(result){
+    // v0.20/v0.21: archive memo via API v1 PATCH /api/v1/memo/:id
+    if (isV1Flavor(info) && memoId) {
+      window.MemosApiV1.patchMemo(
+        info,
+        memoId,
+        { rowStatus: 'ARCHIVED' },
+        function () {
           $("#randomlist").html('').hide()
-              $.message({
-                message: msg('archiveSuccess')
-              })
-  },error:function(err){//清空open_action（打开时候进行的操作）,同时清空open_content
-              $.message({
-                message: msg('archiveFailed')
-              })
-          }
+          $.message({ message: msg('archiveSuccess') })
+        },
+        function () {
+          $.message({ message: msg('archiveFailed') })
+        }
+      )
+      return
+    }
+
+    var deleteUrl = info.apiUrl + 'api/v1/' + memosName
+    $.ajax({
+      url: deleteUrl,
+      type: "PATCH",
+      data: JSON.stringify({
+        // 'uid': memoUid,
+        'state': "ARCHIVED"
+      }),
+      contentType: "application/json",
+      dataType: "json",
+      headers: { 'Authorization': 'Bearer ' + info.apiTokens },
+      success: function (result) {
+        $("#randomlist").html('').hide()
+        $.message({
+          message: msg('archiveSuccess')
+        })
+      }, error: function (err) {//清空open_action（打开时候进行的操作）,同时清空open_content
+        $.message({
+          message: msg('archiveFailed')
+        })
+      }
+    })
   })
 })
-})
 
-$(document).on("click",".item-container",function () {
-  var tagHtml = $(this).text()+" "
+$(document).on("click", ".item-container", function () {
+  var tagHtml = $(this).text() + " "
   add(tagHtml);
 })
 
@@ -1371,10 +1517,10 @@ $('#newtodo').click(function () {
 
 $('#getlink').click(function () {
   chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    var linkHtml = " ["+tab.title+"]("+tab.url+") "
-    if(tab.url){
+    var linkHtml = " [" + tab.title + "](" + tab.url + ") "
+    if (tab.url) {
       add(linkHtml);
-    }else{
+    } else {
       $.message({
         message: msg('getTabFailed')
       })
@@ -1386,13 +1532,13 @@ $('#upres').click(async function () {
   $('#inFile').click()
 })
 
-$('#inFile').on('change', function(data){
-  var fileVal = $('#inFile').val();
+$('#inFile').on('change', function (data) {
+  var fileVal = $('#inFile').val();
   var file = null
-  if(fileVal == '') {
+  if (fileVal == '') {
     return;
   }
-  file= this.files[0];
+  file = this.files[0];
   uploadImage(file)
 });
 
@@ -1400,10 +1546,10 @@ function add(str) {
   var tc = document.getElementById("content");
   var tclen = tc.value.length;
   tc.focus();
-  if(typeof document.selection != "undefined"){
+  if (typeof document.selection != "undefined") {
     document.selection.createRange().text = str;
-  }else{
-    tc.value = 
+  } else {
+    tc.value =
       tc.value.substr(0, tc.selectionStart) +
       str +
       tc.value.substring(tc.selectionStart, tclen);
@@ -1416,35 +1562,35 @@ $('#blog_info_edit').click(function () {
 
 $('#content_submit_text').click(function () {
   var contentVal = $("textarea[name=text]").val()
-  if(contentVal){
+  if (contentVal) {
     sendText()
-  }else{
+  } else {
     $.message({
       message: msg('placeContent')
     })
   }
 })
 
-function getOne(memosId){
+function getOne(memosId) {
   get_info(function (info) {
-  if (info.apiUrl) {
-    $("#randomlist").html('').hide()
-        var getUrl = isV1Flavor(info) ? info.apiUrl+'api/v1/memo/'+memosId : info.apiUrl+'api/v1/'+memosId
-        $.ajax({
-          url:getUrl,
-          type:"GET",
-          contentType:"application/json",
-          dataType:"json",
-          headers : {'Authorization':'Bearer ' + info.apiTokens},
-          success: function(data){
-            randDom(data)
-          }
-        })
-  } else {
-    $.message({
-      message: msg('placeApiUrl')
-    })
-  }
+    if (info.apiUrl) {
+      $("#randomlist").html('').hide()
+      var getUrl = isV1Flavor(info) ? info.apiUrl + 'api/v1/memo/' + memosId : info.apiUrl + 'api/v1/' + memosId
+      $.ajax({
+        url: getUrl,
+        type: "GET",
+        contentType: "application/json",
+        dataType: "json",
+        headers: { 'Authorization': 'Bearer ' + info.apiTokens },
+        success: function (data) {
+          randDom(data)
+        }
+      })
+    } else {
+      $.message({
+        message: msg('placeApiUrl')
+      })
+    }
   })
 }
 
@@ -1460,10 +1606,10 @@ function sendText() {
       var showTag = info.showtag
       var nowTag = $("textarea[name=text]").val().match(/(#[^\s#]+)/)
       var sendvisi = info.memo_lock || ''
-      if(nowTag){
-        if(nowTag[1] == showTag){
+      if (nowTag) {
+        if (nowTag[1] == showTag) {
           sendvisi = 'PUBLIC'
-        }else if(nowTag[1] == hideTag){
+        } else if (nowTag[1] == hideTag) {
           sendvisi = 'PRIVATE'
         }
       }
@@ -1519,18 +1665,67 @@ function sendText() {
         return
       }
 
+      if (isV027Flavor(info)) {
+        window.MemosApiV027.createMemo(
+          info,
+          {
+            content: content,
+            visibility: sendvisi
+          },
+          function (data) {
+            const next = function () {
+              if (Array.isArray(info.resourceIdList) && info.resourceIdList.length > 0) {
+                window.MemosApiV027.setMemoAttachments(
+                  info,
+                  data.name,
+                  info.resourceIdList,
+                  function () {
+                    getOne(data.name)
+                  },
+                  function () {
+                    getOne(data.name)
+                  }
+                )
+                return
+              }
+              getOne(data.name)
+            }
+
+            next()
+            chrome.storage.sync.set(
+              { open_action: '', open_content: '', resourceIdList: [] },
+              function () {
+                $.message({ message: msg('memoSuccess') })
+                $("textarea[name=text]").val('')
+                relistNow = []
+                renderUploadList(relistNow)
+              }
+            )
+          },
+          function () {
+            chrome.storage.sync.set(
+              { open_action: '', open_content: '', resourceIdList: [] },
+              function () {
+                $.message({ message: msg('memoFailed') })
+              }
+            )
+          }
+        )
+        return
+      }
+
       $.ajax({
-        url:info.apiUrl+'api/v1/memos',
-        type:"POST",
-        data:JSON.stringify({
+        url: info.apiUrl + 'api/v1/memos',
+        type: "POST",
+        data: JSON.stringify({
           'content': content,
           'visibility': sendvisi
         }),
-        contentType:"application/json",
-        dataType:"json",
-        headers : {'Authorization':'Bearer ' + info.apiTokens},
-        success: function(data){
-          if(info.resourceIdList.length > 0 ){
+        contentType: "application/json",
+        dataType: "json",
+        headers: { 'Authorization': 'Bearer ' + info.apiTokens },
+        success: function (data) {
+          if (info.resourceIdList.length > 0) {
             //匹配图片
             window.MemosApi.patchMemoWithAttachmentsOrResources(
               info,
@@ -1543,11 +1738,11 @@ function sendText() {
                 getOne(data.name)
               }
             )
-          }else{
+          } else {
             getOne(data.name)
           }
           chrome.storage.sync.set(
-            { open_action: '', open_content: '',resourceIdList:[]},
+            { open_action: '', open_content: '', resourceIdList: [] },
             function () {
               $.message({
                 message: msg('memoSuccess')
@@ -1558,15 +1753,16 @@ function sendText() {
               renderUploadList(relistNow)
             }
           )
-      },error:function(err){//清空open_action（打开时候进行的操作）,同时清空open_content
-              chrome.storage.sync.set(
-                { open_action: '', open_content: '',resourceIdList:[] },
-                function () {
-                  $.message({
-                    message: msg('memoFailed')
-                  })
-                }
-              )},
+        }, error: function (err) {//清空open_action（打开时候进行的操作）,同时清空open_content
+          chrome.storage.sync.set(
+            { open_action: '', open_content: '', resourceIdList: [] },
+            function () {
+              $.message({
+                message: msg('memoFailed')
+              })
+            }
+          )
+        },
       })
     } else {
       $.message({

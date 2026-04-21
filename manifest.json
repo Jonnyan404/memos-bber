@@ -3,7 +3,7 @@
    "name": "__MSG_extName__",
    "default_locale": "en",
    "version": "2026.04.11",
-   "version_name": "Supports 0.15.0 - 0.26.x",
+   "version_name": "Supports 0.15.0 - 0.27.x",
    "action": {
       "default_popup": "popup.html",
       "default_icon": "assets/logo_24x24.png",
@@ -18,7 +18,7 @@
    },
    "background": {
       "service_worker": "js/background.js"
-    },
+   },
    "permissions": [
       "tabs",
       "scripting",
@@ -27,14 +27,17 @@
       "activeTab",
       "contextMenus"
    ],
-   "host_permissions": ["http://*/*", "https://*/*"],
+   "host_permissions": [
+      "http://*/*",
+      "https://*/*"
+   ],
    "commands": {
       "open-extension": {
-        "description": "Open my extension",
-        "suggested_key": {
+         "description": "Open my extension",
+         "suggested_key": {
             "default": "Ctrl+Shift+F",
             "mac": "MacCtrl+Shift+F"
-        }
+         }
       }
-    }
+   }
 }

@@ -6,17 +6,22 @@
 
     const user = response.user || response
 
-    if (typeof user.id === 'number' && Number.isFinite(user.id)) return user.id
-    if (typeof user.id === 'string' && user.id.trim() !== '' && !Number.isNaN(Number(user.id))) {
-      return Number(user.id)
+    function normalizeUserId(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+      if (typeof value !== 'string') return null
+      const trimmed = value.trim()
+      if (!trimmed) return null
+      const last = trimmed.split('/').pop()
+      return last ? String(last) : trimmed
     }
+
+    const directId = normalizeUserId(user.id)
+    if (directId != null) return directId
 
     const name = user.name || (user.user && user.user.name)
     if (typeof name === 'string') {
-      const m = name.match(/\busers\/(\d+)\b/)
-      if (m) return Number(m[1])
-      const last = name.split('/').pop()
-      if (last && !Number.isNaN(Number(last))) return Number(last)
+      const fromName = normalizeUserId(name)
+      if (fromName != null) return fromName
     }
 
     return null
@@ -429,41 +434,14 @@
             // continue; try UpdateMemo flow below.
           }
 
-      // Try a loose PATCH first (some versions accept this).
-      const resourcesPayloadLoose = { resources: resources }
-
-      global.$
-        .ajax({
-          url: url,
-          type: 'PATCH',
-          data: JSON.stringify(resourcesPayloadLoose),
-          contentType: 'application/json',
-          dataType: 'json',
-          headers: headers
-        })
-        .done(function (data) {
-          onSuccess(data, 'resources')
-        })
-        .fail(function (xhr2) {
-          // v0.24 expects UpdateMemo with an update mask when modifying resources.
-          // The gateway commonly accepts `updateMask=resources` as a query param and a
-          // Memo body containing `name` + `resources`.
-          if (!isNotFoundLikeXhr(xhr2) && xhr2 && xhr2.status !== 400) {
-            if (onFail) onFail(xhr2)
-            return
-          }
-
-          const updateUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'updateMask=resources'
-          const resourcesPayloadV024 = {
-            name: memoName,
-            resources: resources
-          }
+          // Try a loose PATCH first (some versions accept this).
+          const resourcesPayloadLoose = { resources: resources }
 
           global.$
             .ajax({
-              url: updateUrl,
+              url: url,
               type: 'PATCH',
-              data: JSON.stringify(resourcesPayloadV024),
+              data: JSON.stringify(resourcesPayloadLoose),
               contentType: 'application/json',
               dataType: 'json',
               headers: headers
@@ -471,10 +449,37 @@
             .done(function (data) {
               onSuccess(data, 'resources')
             })
-            .fail(function (xhr3) {
-              if (onFail) onFail(xhr3)
+            .fail(function (xhr2) {
+              // v0.24 expects UpdateMemo with an update mask when modifying resources.
+              // The gateway commonly accepts `updateMask=resources` as a query param and a
+              // Memo body containing `name` + `resources`.
+              if (!isNotFoundLikeXhr(xhr2) && xhr2 && xhr2.status !== 400) {
+                if (onFail) onFail(xhr2)
+                return
+              }
+
+              const updateUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'updateMask=resources'
+              const resourcesPayloadV024 = {
+                name: memoName,
+                resources: resources
+              }
+
+              global.$
+                .ajax({
+                  url: updateUrl,
+                  type: 'PATCH',
+                  data: JSON.stringify(resourcesPayloadV024),
+                  contentType: 'application/json',
+                  dataType: 'json',
+                  headers: headers
+                })
+                .done(function (data) {
+                  onSuccess(data, 'resources')
+                })
+                .fail(function (xhr3) {
+                  if (onFail) onFail(xhr3)
+                })
             })
-        })
         })
     }
 

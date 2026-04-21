@@ -17,37 +17,37 @@
    "sendImageTo": {
       "message": "Send image to Memos"
    },
-   "saveBtn":{
+   "saveBtn": {
       "message": "Save"
    },
    "supportedMemosVersion": {
-      "message": "Compatible with Memos v0.15.0 - 0.26.x"
+      "message": "Compatible with Memos v0.15.0 - 0.27.x"
    },
-   "placeApiUrl":{
+   "placeApiUrl": {
       "message": "Memos site URL"
    },
-   "placeApiTokens":{
+   "placeApiTokens": {
       "message": "Memos Access Tokens"
    },
-   "placeContent":{
+   "placeContent": {
       "message": "What's on your mind..."
    },
-   "lockPrivate":{
+   "lockPrivate": {
       "message": "Private"
    },
-   "lockProtected":{
+   "lockProtected": {
       "message": "Protected"
    },
-   "lockPublic":{
+   "lockPublic": {
       "message": "Public"
    },
-   "submitBtn":{
+   "submitBtn": {
       "message": "Save"
    },
-   "placeHideInput":{
+   "placeHideInput": {
       "message": "Default 'Private' tag name"
    },
-   "placeShowInput":{
+   "placeShowInput": {
       "message": "Default 'Everyone can see' Tag name"
    },
    "uploadedListTitle": {
@@ -68,52 +68,52 @@
    "attachmentDeleteFailed": {
       "message": "Delete failed 😭"
    },
-   "picDrag":{
+   "picDrag": {
       "message": "Drag upload the image"
    },
-   "picCancelDrag":{
+   "picCancelDrag": {
       "message": "Cancel upload"
    },
-   "picUploading":{
+   "picUploading": {
       "message": "Upload the picture..."
    },
-   "picSuccess":{
+   "picSuccess": {
       "message": "Upload completed"
    },
-   "picFailed":{
+   "picFailed": {
       "message": "Uploading failed"
    },
-   "picPending":{
+   "picPending": {
       "message": "Image uploading is in progress"
    },
-   "saveSuccess":{
+   "saveSuccess": {
       "message": "Save Info Success!"
    },
-   "searchNow":{
+   "searchNow": {
       "message": "What are you looking for?"
    },
-   "searchNone":{
+   "searchNone": {
       "message": "Try another word!"
    },
-   "archiveSuccess":{
+   "archiveSuccess": {
       "message": "Archive Success 😊"
    },
-   "archiveFailed":{
+   "archiveFailed": {
       "message": "Archive Failed 😭"
    },
-   "getTabFailed":{
+   "getTabFailed": {
       "message": "Get Tab Failed 😭"
    },
-   "memoUploading":{
+   "memoUploading": {
       "message": "Sending"
    },
-   "memoSuccess":{
+   "memoSuccess": {
       "message": "Success! 😊"
    },
-   "memoFailed":{
+   "memoFailed": {
       "message": "Failed! 😭"
    },
-   "invalidToken":{
+   "invalidToken": {
       "message": "Invalid token or url 😭"
    },
    "tipOpenSite": {

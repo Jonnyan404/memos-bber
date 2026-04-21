@@ -17,85 +17,85 @@
    "sendImageTo": {
       "message": "发送图片至 Memos"
    },
-   "saveBtn":{
+   "saveBtn": {
       "message": "保存"
    },
    "supportedMemosVersion": {
-      "message": "兼容 Memos v0.15.0 - 0.26.x"
+      "message": "兼容 Memos v0.15.0 - 0.27.x"
    },
-   "placeApiUrl":{
+   "placeApiUrl": {
       "message": "请填入 Memos 主页网址"
    },
-   "placeApiTokens":{
+   "placeApiTokens": {
       "message": "请填入 Memos Access Tokens"
    },
-   "placeContent":{
+   "placeContent": {
       "message": "现在的想法是..."
    },
-   "lockPrivate":{
+   "lockPrivate": {
       "message": "私有"
    },
-   "lockProtected":{
+   "lockProtected": {
       "message": "登录可见"
    },
-   "lockPublic":{
+   "lockPublic": {
       "message": "公开"
    },
-   "submitBtn":{
+   "submitBtn": {
       "message": "记下"
    },
-   "placeHideInput":{
+   "placeHideInput": {
       "message": "默认“私有”标签名"
    },
-   "placeShowInput":{
+   "placeShowInput": {
       "message": "默认“公开”标签名"
    },
-   "picDrag":{
+   "picDrag": {
       "message": "拖拽到窗口上传该图片"
    },
-   "picCancelDrag":{
+   "picCancelDrag": {
       "message": "取消上传"
    },
-   "picUploading":{
+   "picUploading": {
       "message": "图片上传中……"
    },
-   "picSuccess":{
+   "picSuccess": {
       "message": "上传完成"
    },
-   "picFailed":{
+   "picFailed": {
       "message": "上传图片失败"
    },
-   "picPending":{
+   "picPending": {
       "message": "有图片等待上传"
    },
-   "saveSuccess":{
+   "saveSuccess": {
       "message": "保存信息成功"
    },
-   "searchNow":{
+   "searchNow": {
       "message": "想搜点啥？"
    },
-   "searchNone":{
+   "searchNone": {
       "message": "搜不到，换个词试试"
    },
-   "archiveSuccess":{
+   "archiveSuccess": {
       "message": "归档成功！😊"
    },
-   "archiveFailed":{
+   "archiveFailed": {
       "message": "归档失败 😭"
    },
-   "getTabFailed":{
+   "getTabFailed": {
       "message": "获取标签失败 😭"
    },
-   "memoUploading":{
+   "memoUploading": {
       "message": "发送中……"
    },
-   "memoSuccess":{
+   "memoSuccess": {
       "message": "发送成功！😊"
    },
-   "memoFailed":{
+   "memoFailed": {
       "message": "发送失败 😭"
    },
-   "invalidToken":{
+   "invalidToken": {
       "message": "无效的 token 或 url 😭"
    },
    "uploadedListTitle": {
