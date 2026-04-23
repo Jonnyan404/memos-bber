@@ -1,6 +1,6 @@
 const UI_LANGUAGE_STORAGE_KEY = 'uiLanguage'
 
-const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko'])
+const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko', 'de'])
 
 function normalizeUiLanguage(value) {
   const lang = String(value || 'auto')
@@ -44,72 +44,47 @@ function pageReadSelectionText() {
   }
 }
 
-function pageReadSelectionTextSource() {
-  return `(${pageReadSelectionText.toString()})()`
-}
-
 function getSelectionTextFromTab(tabId, fallbackText) {
   return new Promise((resolve) => {
     const fallback = typeof fallbackText === 'string' ? fallbackText : ''
-    if (!tabId) {
+    if (!tabId || !chrome.scripting || typeof chrome.scripting.executeScript !== 'function') {
       resolve(fallback)
       return
     }
 
-    if (chrome.scripting && typeof chrome.scripting.executeScript === 'function') {
-      try {
-        chrome.scripting.executeScript(
-          {
-            target: { tabId },
-            func: pageReadSelectionText
-          },
-          (results) => {
-            if (chrome.runtime.lastError) {
-              resolve(fallback)
-              return
-            }
-            const first = Array.isArray(results) ? results[0] : null
-            const text = first && typeof first.result === 'string' ? first.result : ''
-            resolve(text || fallback)
-          }
-        )
-        return
-      } catch (_) {
-        // Fallback below for Firefox MV2 background pages.
-      }
-    }
-
-    if (chrome.tabs && typeof chrome.tabs.executeScript === 'function') {
-      try {
-        chrome.tabs.executeScript(tabId, { code: pageReadSelectionTextSource() }, (results) => {
+    try {
+      chrome.scripting.executeScript(
+        {
+          target: { tabId },
+          func: pageReadSelectionText
+        },
+        (results) => {
           if (chrome.runtime.lastError) {
             resolve(fallback)
             return
           }
-          const text = Array.isArray(results) && typeof results[0] === 'string' ? results[0] : ''
+          const first = Array.isArray(results) ? results[0] : null
+          const text = first && typeof first.result === 'string' ? first.result : ''
           resolve(text || fallback)
-        })
-        return
-      } catch (_) {
-        // Ignore and fall back to the original selection text below.
-      }
+        }
+      )
+    } catch (_) {
+      resolve(fallback)
     }
-
-    resolve(fallback)
   })
 }
 
 function tryOpenActionPopup(tab) {
   try {
-    if (!chrome.browserAction || typeof chrome.browserAction.openPopup !== 'function') return
+    if (!chrome.action || typeof chrome.action.openPopup !== 'function') return
     const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : undefined
 
     const open = () => {
       try {
         if (typeof windowId === 'number') {
-          chrome.browserAction.openPopup({ windowId }, () => void chrome.runtime.lastError)
+          chrome.action.openPopup({ windowId }, () => void chrome.runtime.lastError)
         } else {
-          chrome.browserAction.openPopup({}, () => void chrome.runtime.lastError)
+          chrome.action.openPopup({}, () => void chrome.runtime.lastError)
         }
       } catch (_) {
         // best-effort only

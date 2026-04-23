@@ -1,6 +1,6 @@
 const UI_LANGUAGE_STORAGE_KEY = 'uiLanguage'
 
-const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko'])
+const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko', 'de'])
 
 function normalizeUiLanguage(value) {
   const lang = String(value || 'auto')

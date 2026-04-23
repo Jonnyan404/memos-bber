@@ -176,10 +176,13 @@
    "langJapanese": {
       "message": "日本語"
    },
-   "langKorean": {
-      "message": "한국어"
-   },
-   "tipFullscreen": {
+"langKorean": {
+       "message": "한국어"
+    },
+    "langGerman": {
+       "message": "Deutsch"
+    },
+    "tipFullscreen": {
       "message": "全屏编辑"
    },
    "tipResize": {

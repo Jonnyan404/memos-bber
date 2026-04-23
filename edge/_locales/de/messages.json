@@ -1,0 +1,191 @@
+{
+   "extName": {
+      "message": "Memos"
+   },
+   "actionTitle": {
+      "message": "An Memos senden"
+   },
+   "extDescription": {
+      "message": "Memos: Ein leichtgewichtiger, selbstgehosteter Memo-Hub."
+   },
+   "sendTo": {
+      "message": "An Memos senden \"%s\""
+   },
+   "sendLinkTo": {
+      "message": "Link an Memos senden"
+   },
+   "sendImageTo": {
+      "message": "Bild an Memos senden"
+   },
+   "saveBtn": {
+      "message": "Speichern"
+   },
+   "supportedMemosVersion": {
+      "message": "Kompatibel mit Memos v0.15.0 - 0.27.x"
+   },
+   "settingsConnectionTitle": {
+      "message": "Verbindung"
+   },
+   "settingsConnectionDesc": {
+      "message": "Memos Site-URL und Access-Token konfigurieren."
+   },
+   "settingsPostingTitle": {
+      "message": "Ver\u00f6ffentlichen"
+   },
+   "settingsPostingDesc": {
+      "message": "Standardtext f\u00fcr Nur-Anhang-Uploads"
+   },
+   "placeApiUrl": {
+      "message": "Memos Site-URL"
+   },
+   "placeApiTokens": {
+      "message": "Memos Access Tokens"
+   },
+   "placeContent": {
+      "message": "Was besch\u00e4ftigt dich..."
+   },
+   "lockPrivate": {
+      "message": "Privat"
+   },
+   "lockProtected": {
+      "message": "Gesch\u00fctzt"
+   },
+   "lockPublic": {
+      "message": "\u00d6ffentlich"
+   },
+   "submitBtn": {
+      "message": "Speichern"
+   },
+   "placeHideInput": {
+      "message": "Standard 'Privat' Tag-Name"
+   },
+   "placeShowInput": {
+      "message": "Standard 'Jeder kann sehen' Tag-Name"
+   },
+   "placeAttachmentOnlyDefaultText": {
+      "message": "Standardtext f\u00fcr Nur-Anhang-Uploads (leer lassen f\u00fcr integrierten Text)"
+   },
+   "uploadedListTitle": {
+      "message": "Hochgeladene Dateien, Ziehen zum Sortieren"
+   },
+   "uploadedListEmpty": {
+      "message": "Keine hochgeladenen Dateien"
+   },
+   "tipReorder": {
+      "message": "Ziehen zum Sortieren"
+   },
+   "tipDeleteAttachment": {
+      "message": "L\u00f6schen"
+   },
+   "attachmentDeleteSuccess": {
+      "message": "Gel\u00f6scht"
+   },
+   "attachmentDeleteFailed": {
+      "message": "L\u00f6schen fehlgeschlagen \ud83d\ude2d"
+   },
+   "picDrag": {
+      "message": "Bild hochladen"
+   },
+   "picCancelDrag": {
+      "message": "Upload abbrechen"
+   },
+   "picUploading": {
+      "message": "Bild wird hochgeladen..."
+   },
+   "picSuccess": {
+      "message": "Upload abgeschlossen"
+   },
+   "picFailed": {
+      "message": "Upload fehlgeschlagen"
+   },
+   "picPending": {
+      "message": "Bild-Upload l\u00e4uft"
+   },
+   "saveSuccess": {
+      "message": "Info erfolgreich gespeichert!"
+   },
+   "searchNow": {
+      "message": "Was suchst du?"
+   },
+   "searchNone": {
+      "message": "Versuche ein anderes Wort!"
+   },
+   "archiveSuccess": {
+      "message": "Archivieren erfolgreich \ud83d\ude0a"
+   },
+   "archiveFailed": {
+      "message": "Archivieren fehlgeschlungen \ud83d\ude2d"
+   },
+   "getTabFailed": {
+      "message": "Tab abrufen fehlgeschlungen \ud83d\ude2d"
+   },
+   "memoUploading": {
+      "message": "Wird gesendet"
+   },
+   "memoSuccess": {
+      "message": "Erfolgreich! \ud83d\ude0a"
+   },
+   "memoFailed": {
+      "message": "Fehlgeschlagen! \ud83d\ude2d"
+   },
+   "invalidToken": {
+      "message": "Ung\u00fcltiges Token oder URL \ud83d\ude2d"
+   },
+   "tipOpenSite": {
+      "message": "Memos \u00f6ffnen"
+   },
+   "tipSettings": {
+      "message": "Einstellungen"
+   },
+   "tipTags": {
+      "message": "Tag einf\u00fcgen"
+   },
+   "tipTodo": {
+      "message": "Todo einf\u00fcgen"
+   },
+   "tipUpload": {
+      "message": "Datei hochladen"
+   },
+   "tipLink": {
+      "message": "Aktuellen Tab-Link einf\u00fcgen"
+   },
+   "tipRandom": {
+      "message": "Zuf\u00e4lliges Memo"
+   },
+   "tipSearch": {
+      "message": "Suchen"
+   },
+   "tipVisibility": {
+      "message": "Sichtbarkeit"
+   },
+   "tipSend": {
+      "message": "Senden (Strg/\u2318+Enter)"
+   },
+   "tipLanguage": {
+      "message": "Sprache"
+   },
+   "langAuto": {
+      "message": "Automatisch"
+   },
+   "langEnglish": {
+      "message": "English"
+   },
+   "langChineseSimplified": {
+      "message": "\u7b80\u4f53\u4e2d\u6587"
+   },
+   "langJapanese": {
+      "message": "\u65e5\u672c\u8a9e"
+   },
+   "langKorean": {
+      "message": "\ud55c\uad6d\uc5b4"
+   },
+   "langGerman": {
+      "message": "Deutsch"
+   },
+   "tipFullscreen": {
+      "message": "Vollbild-Editor \u00f6ffnen"
+   },
+   "tipResize": {
+      "message": "Ziehen zum \u00c4ndern (min: Standardgr\u00f6\u00dfe)"
+   }
+}

@@ -1,6 +1,6 @@
 const UI_LANGUAGE_STORAGE_KEY = 'uiLanguage'
 
-const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko'])
+const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko', 'de'])
 
 function normalizeUiLanguage(value) {
 	const lang = String(value || 'auto')
@@ -52,6 +52,7 @@ function getLanguageToggleLabel(lang) {
 	if (lang === 'zh_CN') return '中'
 	if (lang === 'ja') return '日'
 	if (lang === 'ko') return '한'
+	if (lang === 'de') return 'DE'
 	return 'A'
 }
 
@@ -135,6 +136,7 @@ function applyStaticI18n() {
 	setText('langOptionZhCN', 'langChineseSimplified')
 	setText('langOptionJa', 'langJapanese')
 	setText('langOptionKo', 'langKorean')
+	setText('langOptionDe', 'langGerman')
 	setTitle('langToggle', 'tipLanguage')
 	const langToggle = document.getElementById('langToggle')
 	if (langToggle) langToggle.setAttribute('aria-label', t('tipLanguage'))

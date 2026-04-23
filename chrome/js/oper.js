@@ -182,6 +182,11 @@ function applyDayjsLocaleByUiLanguage(uiLang) {
     return
   }
 
+  if (lang === 'de') {
+    dayjs.locale('de')
+    return
+  }
+
   // auto: best-effort infer from browser UI language
   const ui = String(chrome.i18n.getUILanguage ? chrome.i18n.getUILanguage() : '').toLowerCase()
   if (ui.startsWith('zh')) {
@@ -194,6 +199,10 @@ function applyDayjsLocaleByUiLanguage(uiLang) {
   }
   if (ui.startsWith('ko')) {
     dayjs.locale('ko')
+    return
+  }
+  if (ui.startsWith('de')) {
+    dayjs.locale('de')
     return
   }
   dayjs.locale('en')

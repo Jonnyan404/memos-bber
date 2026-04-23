@@ -44,7 +44,6 @@ function initProportionalEditorResize() {
     const nonEditorHeight = Math.max(0, Math.ceil(document.body.scrollHeight - initialRect.height))
     let maxScale = 1
     let currentScale = 1
-    let nextScale = 1
     let dragging = false
     let dragStartX = 0
     let dragStartY = 0
@@ -55,21 +54,8 @@ function initProportionalEditorResize() {
       return Math.min(Math.max(scale, 1), maxScale)
     }
 
-    const showPreviewScale = (scale) => {
-      const previewScale = clampScale(scale)
-      const relativeScale = previewScale / currentScale
-      editor.style.transformOrigin = 'top left'
-      editor.style.transform = `scale(${relativeScale})`
-    }
-
-    const clearPreviewScale = () => {
-      editor.style.transform = ''
-      editor.style.transformOrigin = ''
-    }
-
     const applyScale = (scale) => {
       currentScale = clampScale(scale)
-      nextScale = currentScale
       editor.style.width = `${Math.round(baseW * currentScale)}px`
       editor.style.height = `${Math.round(baseH * currentScale)}px`
     }
@@ -89,7 +75,6 @@ function initProportionalEditorResize() {
     }
 
     const computeMaxScale = () => {
-      if (dragging) return
       // In popup mode, allow scaling up to Chrome's max popup size.
       // Do not clamp by current window.innerWidth/innerHeight, otherwise the popup can't grow to the max.
       const viewportW = 800
@@ -109,9 +94,6 @@ function initProportionalEditorResize() {
       if (!dragging) return
       dragging = false
       handle.classList.remove('dragging')
-      clearPreviewScale()
-      applyScale(nextScale)
-      computeMaxScale()
       persistScale()
     }
 
@@ -121,8 +103,7 @@ function initProportionalEditorResize() {
       const dy = ev.clientY - dragStartY
       const widthScale = (baseW * dragStartScale + dx) / baseW
       const heightScale = (baseH * dragStartScale + dy) / baseH
-      nextScale = clampScale(Math.max(widthScale, heightScale))
-      showPreviewScale(nextScale)
+      applyScale(Math.max(widthScale, heightScale))
     }
 
     const startDrag = (ev) => {
@@ -131,8 +112,6 @@ function initProportionalEditorResize() {
       dragStartX = ev.clientX
       dragStartY = ev.clientY
       dragStartScale = currentScale
-      nextScale = currentScale
-      showPreviewScale(currentScale)
       handle.classList.add('dragging')
       if (typeof handle.setPointerCapture === 'function') {
         try {
@@ -203,6 +182,11 @@ function applyDayjsLocaleByUiLanguage(uiLang) {
     return
   }
 
+  if (lang === 'de') {
+    dayjs.locale('de')
+    return
+  }
+
   // auto: best-effort infer from browser UI language
   const ui = String(chrome.i18n.getUILanguage ? chrome.i18n.getUILanguage() : '').toLowerCase()
   if (ui.startsWith('zh')) {
@@ -217,6 +201,10 @@ function applyDayjsLocaleByUiLanguage(uiLang) {
     dayjs.locale('ko')
     return
   }
+  if (ui.startsWith('de')) {
+    dayjs.locale('de')
+    return
+  }
   dayjs.locale('en')
 }
 
@@ -228,10 +216,6 @@ function updateLockNowText(lockType) {
   } else if (lockType === 'PROTECTED') {
     $('#lock-now').text(msg('lockProtected'))
   }
-}
-
-function showRandomList(content) {
-  $('#randomlist').stop(true, true).html(content).show()
 }
 
 applyDayjsLocaleByUiLanguage(typeof window.getUiLanguage === 'function' ? window.getUiLanguage() : 'auto')
@@ -1019,7 +1003,7 @@ $('#search').click(function () {
               searchDom += '</div>'
             }
             window.ViewImage && ViewImage.init('.random-image')
-            showRandomList(searchDom)
+            $("#randomlist").html(searchDom).slideDown(500);
             hydrateV1PreviewImages(info)
           }
         },
@@ -1098,7 +1082,7 @@ function randDom(randomData){
   }
   randomDom += '</div>'
   window.ViewImage && ViewImage.init('.random-image')
-  showRandomList(randomDom)
+  $("#randomlist").html(randomDom).slideDown(500);
   hydrateV1PreviewImages(info)
   })
 }
