@@ -2,7 +2,7 @@
    "manifest_version": 2,
    "name": "__MSG_extName__",
    "default_locale": "en",
-   "version": "2026.4.25",
+   "version": "2026.8.5",
    "browser_action": {
       "default_popup": "popup.html",
       "default_icon": "assets/logo_24x24.png",

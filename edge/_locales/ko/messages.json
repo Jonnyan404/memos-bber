@@ -21,7 +21,7 @@
     "message": "저장"
   },
   "supportedMemosVersion": {
-    "message": "Memos v0.15.0 - 0.27.x 호환"
+    "message": "Memos v0.15.0 - 0.29.x 호환"
   },
   "settingsConnectionTitle": {
     "message": "연결 설정"
