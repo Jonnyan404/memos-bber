@@ -264,15 +264,10 @@
         return
       }
 
-      if (global.MemosApiModern) {
-        global.MemosApiModern.fetchMemosWithFallback(
-          info,
-          '?pageSize=1000',
-          function (data) {
-            if (success) success(collectTags(info, extractMemos(data)))
-          },
-          fail
-        )
+      if (global.MemosApiV023) {
+        global.MemosApiV023.listMemos(info, { pageSize: 1000 }, function (data) {
+          if (success) success(collectTags(info, extractMemos(data)))
+        }, fail)
       }
     }
 
@@ -369,10 +364,12 @@
     }
 
     function uploadFile(file, options, success, fail) {
-      const oldName = String(file && file.name ? file.name : 'upload').split('.')
-      const fileExt = String(file && file.name ? file.name : '').split('.').pop()
+      const sourceName = String(file && file.name ? file.name : 'upload')
+      const lastDot = sourceName.lastIndexOf('.')
+      const filenameBase = lastDot > 0 ? sourceName.slice(0, lastDot) : sourceName
+      const fileExt = lastDot > 0 ? sourceName.slice(lastDot) : ''
       const now = global.dayjs().format('YYYYMMDDHHmmss')
-      const nextName = oldName[0] + '_' + now + (fileExt ? '.' + fileExt : '')
+      const nextName = filenameBase + '_' + now + fileExt
 
       if (flavor === FLAVOR_V020_V021 && global.MemosApiV020V021) {
         global.MemosApiV020V021.uploadResourceBlob(
@@ -421,9 +418,9 @@
       }
 
       requestJson({
-        url: info.apiUrl + 'api/v1/' + memoName,
+        url: info.apiUrl + 'api/v1/' + memoName + '?updateMask=state',
         type: 'PATCH',
-        data: JSON.stringify({ state: 'ARCHIVED' }),
+        data: JSON.stringify({ name: memoName, state: 'ARCHIVED' }),
         contentType: 'application/json',
         dataType: 'json',
         headers: { Authorization: 'Bearer ' + info.apiTokens }
