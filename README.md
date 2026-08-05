@@ -1,8 +1,10 @@
 一款通过浏览器插件发布 [Memos](https://usememos.com/) 的插件。基于 iSpeak-bber 修改，原作者为 [DreamyTZK](https://www.antmoe.com/)。
 
-兼容 Memos v0.15.0 - v0.29.x，支持新版 Attachment API。
-
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jonnyan404)
+
+## 更新日志
+
+- 当前支持memos `v0.15.0 - v0.30.x` [点击查看详细更新日志](https://raw.githubusercontent.com/Jonnyan404/memos-bber/refs/heads/main/change.log)
 
 ## 在线商店安装
 
