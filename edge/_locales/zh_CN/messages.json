@@ -21,7 +21,7 @@
       "message": "保存"
    },
    "supportedMemosVersion": {
-      "message": "兼容 Memos v0.15.0 - 0.29.x"
+      "message": "兼容 Memos v0.15.0 - 0.30.x"
    },
    "settingsConnectionTitle": {
       "message": "连接设置"

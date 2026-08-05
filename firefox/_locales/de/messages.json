@@ -21,7 +21,7 @@
     "message": "Speichern"
   },
   "supportedMemosVersion": {
-    "message": "Kompatibel mit Memos v0.15.0 - 0.29.x"
+    "message": "Kompatibel mit Memos v0.15.0 - 0.30.x"
   },
   "settingsConnectionTitle": {
     "message": "Verbindung"
