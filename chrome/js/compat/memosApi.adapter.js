@@ -187,6 +187,7 @@
 
   function normalizeUploadedItem(entity, fallbackFilename) {
     if (!entity) return null
+    entity = entity.attachment || entity.resource || entity
     const inferredId = (function () {
       const value = entity.id != null ? entity.id : entity.ID != null ? entity.ID : entity.Id
       if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
@@ -204,7 +205,11 @@
       name: name,
       filename: entity.filename || fallbackFilename || name,
       createTime: entity.createTime || entity.createdTs || entity.createdAt,
-      type: entity.type
+      type: entity.type,
+      uid: entity.uid,
+      size: entity.size,
+      memo: entity.memo,
+      externalLink: entity.externalLink
     }
   }
 
@@ -259,15 +264,10 @@
         return
       }
 
-      if (global.MemosApiModern) {
-        global.MemosApiModern.fetchMemosWithFallback(
-          info,
-          '?pageSize=1000',
-          function (data) {
-            if (success) success(collectTags(info, extractMemos(data)))
-          },
-          fail
-        )
+      if (global.MemosApiV023) {
+        global.MemosApiV023.listMemos(info, { pageSize: 1000 }, function (data) {
+          if (success) success(collectTags(info, extractMemos(data)))
+        }, fail)
       }
     }
 
@@ -364,10 +364,12 @@
     }
 
     function uploadFile(file, options, success, fail) {
-      const oldName = String(file && file.name ? file.name : 'upload').split('.')
-      const fileExt = String(file && file.name ? file.name : '').split('.').pop()
+      const sourceName = String(file && file.name ? file.name : 'upload')
+      const lastDot = sourceName.lastIndexOf('.')
+      const filenameBase = lastDot > 0 ? sourceName.slice(0, lastDot) : sourceName
+      const fileExt = lastDot > 0 ? sourceName.slice(lastDot) : ''
       const now = global.dayjs().format('YYYYMMDDHHmmss')
-      const nextName = oldName[0] + '_' + now + (fileExt ? '.' + fileExt : '')
+      const nextName = filenameBase + '_' + now + fileExt
 
       if (flavor === FLAVOR_V020_V021 && global.MemosApiV020V021) {
         global.MemosApiV020V021.uploadResourceBlob(
@@ -396,7 +398,7 @@
           info,
           payload,
           function (resp) {
-            const entity = (resp && resp.resource) || resp
+            const entity = (resp && (resp.attachment || resp.resource)) || resp
             if (success) success(normalizeUploadedItem(entity, nextName))
           },
           fail
@@ -416,9 +418,9 @@
       }
 
       requestJson({
-        url: info.apiUrl + 'api/v1/' + memoName,
+        url: info.apiUrl + 'api/v1/' + memoName + '?updateMask=state',
         type: 'PATCH',
-        data: JSON.stringify({ state: 'ARCHIVED' }),
+        data: JSON.stringify({ name: memoName, state: 'ARCHIVED' }),
         contentType: 'application/json',
         dataType: 'json',
         headers: { Authorization: 'Bearer ' + info.apiTokens }
@@ -458,24 +460,35 @@
         return
       }
 
+      const uploadedItems = Array.isArray(payload.resourceIdList) ? payload.resourceIdList : []
+      const attachmentReferences = uploadedItems
+        .filter(function (item) {
+          return item && typeof item.name === 'string' && item.name.indexOf('attachments/') === 0
+        })
+        .map(function (item) {
+          return { name: item.name }
+        })
+      const canCreateWithAttachments = flavor === 'modern' && attachmentReferences.length === uploadedItems.length
+
       requestJson({
         url: info.apiUrl + 'api/v1/memos',
         type: 'POST',
         data: JSON.stringify({
           content: payload.content,
-          visibility: payload.visibility
+          visibility: payload.visibility,
+          ...(canCreateWithAttachments ? { attachments: attachmentReferences } : {})
         }),
         contentType: 'application/json',
         dataType: 'json',
         headers: { Authorization: 'Bearer ' + info.apiTokens }
       }, function (data) {
         const createdName = data && data.name ? data.name : data && data.memo && data.memo.name ? data.memo.name : ''
-        const resources = Array.isArray(payload.resourceIdList) ? payload.resourceIdList : []
+        const resources = uploadedItems
         if (!createdName) {
           if (success) success(data)
           return
         }
-        if (resources.length === 0) {
+        if (resources.length === 0 || canCreateWithAttachments) {
           getMemo(createdName, success, fail)
           return
         }
@@ -497,7 +510,7 @@
     return {
       flavor: flavor,
       needsAuthenticatedImagePreview: function () {
-        return flavor === FLAVOR_V020_V021
+        return true
       },
       listTags: listTags,
       searchMemos: searchMemos,

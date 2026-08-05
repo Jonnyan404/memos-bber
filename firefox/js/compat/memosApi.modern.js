@@ -151,10 +151,53 @@
       return copy
     }
 
+    function uploadResource() {
+      global.$
+        .ajax({
+          url: urlResources,
+          data: JSON.stringify(payload),
+          type: 'POST',
+          cache: false,
+          processData: false,
+          contentType: 'application/json',
+          dataType: 'json',
+          headers: headers
+        })
+        .done(function (data) {
+          onSuccess(data, 'resources')
+        })
+        .fail(function (xhr) {
+          if (!xhr || xhr.status !== 400) {
+            if (onFail) onFail(xhr)
+            return
+          }
+
+          global.$
+            .ajax({
+              url: urlResources,
+              data: JSON.stringify(stripVisibility(payload)),
+              type: 'POST',
+              cache: false,
+              processData: false,
+              contentType: 'application/json',
+              dataType: 'json',
+              headers: headers
+            })
+            .done(function (data) {
+              onSuccess(data, 'resources')
+            })
+            .fail(function (xhr2) {
+              if (onFail) onFail(xhr2)
+            })
+        })
+    }
+
+    // Attachment visibility was removed in Memos v0.26. Send the current
+    // attachment shape first and retain the resource endpoint as a legacy fallback.
     global.$
       .ajax({
         url: urlAttachments,
-        data: JSON.stringify(payload),
+        data: JSON.stringify(stripVisibility(payload)),
         type: 'POST',
         cache: false,
         processData: false,
@@ -166,115 +209,11 @@
         onSuccess(data, 'attachments')
       })
       .fail(function (xhr) {
-        if (xhr && xhr.status === 400) {
-          global.$
-            .ajax({
-              url: urlAttachments,
-              data: JSON.stringify(stripVisibility(payload)),
-              type: 'POST',
-              cache: false,
-              processData: false,
-              contentType: 'application/json',
-              dataType: 'json',
-              headers: headers
-            })
-            .done(function (data) {
-              onSuccess(data, 'attachments')
-            })
-            .fail(function (xhrRetry) {
-              if (!isNotFoundLikeXhr(xhrRetry)) {
-                if (onFail) onFail(xhrRetry)
-                return
-              }
-              // fall through to resources below
-              xhr = xhrRetry
-              if (!isNotFoundLikeXhr(xhr)) {
-                if (onFail) onFail(xhr)
-                return
-              }
-              global.$
-                .ajax({
-                  url: urlResources,
-                  data: JSON.stringify(payload),
-                  type: 'POST',
-                  cache: false,
-                  processData: false,
-                  contentType: 'application/json',
-                  dataType: 'json',
-                  headers: headers
-                })
-                .done(function (data) {
-                  onSuccess(data, 'resources')
-                })
-                .fail(function (xhr2) {
-                  if (xhr2 && xhr2.status === 400) {
-                    global.$
-                      .ajax({
-                        url: urlResources,
-                        data: JSON.stringify(stripVisibility(payload)),
-                        type: 'POST',
-                        cache: false,
-                        processData: false,
-                        contentType: 'application/json',
-                        dataType: 'json',
-                        headers: headers
-                      })
-                      .done(function (data) {
-                        onSuccess(data, 'resources')
-                      })
-                      .fail(function (xhr3) {
-                        if (onFail) onFail(xhr3)
-                      })
-                    return
-                  }
-                  if (onFail) onFail(xhr2)
-                })
-            })
+        if (isNotFoundLikeXhr(xhr)) {
+          uploadResource()
           return
         }
-
-        if (!isNotFoundLikeXhr(xhr)) {
-          if (onFail) onFail(xhr)
-          return
-        }
-
-        global.$
-          .ajax({
-            url: urlResources,
-            data: JSON.stringify(payload),
-            type: 'POST',
-            cache: false,
-            processData: false,
-            contentType: 'application/json',
-            dataType: 'json',
-            headers: headers
-          })
-          .done(function (data) {
-            onSuccess(data, 'resources')
-          })
-          .fail(function (xhr2) {
-            if (xhr2 && xhr2.status === 400) {
-              global.$
-                .ajax({
-                  url: urlResources,
-                  data: JSON.stringify(stripVisibility(payload)),
-                  type: 'POST',
-                  cache: false,
-                  processData: false,
-                  contentType: 'application/json',
-                  dataType: 'json',
-                  headers: headers
-                })
-                .done(function (data) {
-                  onSuccess(data, 'resources')
-                })
-                .fail(function (xhr3) {
-                  if (onFail) onFail(xhr3)
-                })
-              return
-            }
-            if (onFail) onFail(xhr2)
-          })
+        if (onFail) onFail(xhr)
       })
   }
 

@@ -21,7 +21,7 @@
       "message": "Save"
    },
    "supportedMemosVersion": {
-      "message": "Compatible with Memos v0.15.0 - 0.27.x"
+      "message": "Compatible with Memos v0.15.0 - 0.29.x"
    },
    "settingsConnectionTitle": {
       "message": "Connection"

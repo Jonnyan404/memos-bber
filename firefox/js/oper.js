@@ -505,6 +505,15 @@ function buildV1ResourceStreamUrl(info, resource) {
   }
   if (root && !root.endsWith('/')) root += '/'
 
+  if (resource.externalLink) return resource.externalLink
+
+  const name = typeof resource.name === 'string' ? resource.name.trim() : ''
+  const filename = typeof resource.filename === 'string' ? resource.filename : ''
+  if (name.indexOf('attachments/') === 0 && filename) {
+    const url = root + 'file/' + name.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(filename)
+    return isImageResource(resource) ? url + '?thumbnail=true' : url
+  }
+
   function isImageResource(r) {
     if (!r) return false
     const t = typeof r.type === 'string' ? r.type.toLowerCase() : ''
@@ -542,13 +551,11 @@ function buildV1ResourceStreamUrl(info, resource) {
   if (id) return buildStreamUrl(id)
 
   // Fallback for older resource shapes.
-  const name = typeof resource.name === 'string' ? resource.name : ''
-
   // In some memo payloads, the uid may appear as `name` directly.
   // Example: name="ETU6hjuR..." should map to /o/r/:uid, not /file/:name/:filename.
   if (isProbablyUid(name)) return buildStreamUrl(name.trim())
 
-  const fileId = resource.publicId || resource.filename
+  const fileId = resource.publicId || filename
   if (name && fileId) return root + 'file/' + name + '/' + fileId
   return ''
 }
@@ -1308,4 +1315,4 @@ function sendText(preparedContent) {
       })
     }
   })
-}  
+}
