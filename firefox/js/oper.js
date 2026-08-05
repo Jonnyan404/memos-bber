@@ -541,6 +541,11 @@ function buildV1ResourceStreamUrl(info, resource) {
   const uid = typeof uidRaw === 'string' ? uidRaw : uidRaw != null ? String(uidRaw) : ''
   if (uid.trim() !== '') return buildStreamUrl(uid.trim())
 
+  // Fallback for older resource shapes.
+  // In some memo payloads, the uid may appear as `name` directly.
+  // Example: name="ETU6hjuR..." should map to /o/r/:uid, not /file/:name/:filename.
+  if (isProbablyUid(name)) return buildStreamUrl(name.trim())
+
   // Legacy versions (e.g. v0.18) may only expose numeric `id` without `uid/name`.
   const idRaw = resource.id != null ? resource.id : resource.ID != null ? resource.ID : resource.Id
   const id = typeof idRaw === 'number' && Number.isFinite(idRaw)
@@ -549,11 +554,6 @@ function buildV1ResourceStreamUrl(info, resource) {
       ? String(Math.floor(Number(idRaw)))
       : ''
   if (id) return buildStreamUrl(id)
-
-  // Fallback for older resource shapes.
-  // In some memo payloads, the uid may appear as `name` directly.
-  // Example: name="ETU6hjuR..." should map to /o/r/:uid, not /file/:name/:filename.
-  if (isProbablyUid(name)) return buildStreamUrl(name.trim())
 
   const fileId = resource.publicId || filename
   if (name && fileId) return root + 'file/' + name + '/' + fileId
