@@ -249,10 +249,10 @@
       }
 
       if (flavor === 'v023' && global.MemosApiV023) {
-        const filterExpr = global.MemosApiV023.buildFilter({
-          rowStatus: 'NORMAL',
-          creator: 'users/' + info.userid
-        })
+        // v0.23 filter requires `creator == "users/{numericId}"`. Some stored userids are
+        // usernames, which causes 400. Also `row_status` can cause 400 on some builds.
+        // Let the server identify the current user from the token and return all visible memos.
+        const filterExpr = global.MemosApiV023.buildFilter({})
         global.MemosApiV023.listMemos(
           info,
           { pageSize: 1000, filterExpr: filterExpr },
@@ -328,7 +328,10 @@
 
       if (flavor === FLAVOR_V020_V021 && global.MemosApiV020V021) {
         global.MemosApiV020V021.listMemos(info, { limit: 1000, rowStatus: 'NORMAL' }, function (data) {
-          if (success) success(keepLegacyVisibleMemos(extractMemos(data)))
+          const raw = extractMemos(data)
+          const filtered = keepLegacyVisibleMemos(raw)
+          //console.log('[memos-bber] v020-v021 random raw count:', raw.length, 'filtered count:', filtered.length)
+          if (success) success(filtered)
         }, fail)
         return
       }

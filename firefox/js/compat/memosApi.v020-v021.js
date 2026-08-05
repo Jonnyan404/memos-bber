@@ -201,22 +201,69 @@
 
   function getTagSuggestion(info, success, fail) {
     const headers = { Authorization: 'Bearer ' + info.apiTokens }
+
+    function normalizeTagList(data) {
+      const list = Array.isArray(data) ? data : Array.isArray(data.tags) ? data.tags : []
+      return list
+        .map(function (t) {
+          if (!t) return ''
+          if (typeof t === 'string') return t
+          if (typeof t.name === 'string') return t.name
+          if (typeof t.tag === 'string') return t.tag
+          return ''
+        })
+        .map(function (s) {
+          return String(s).replace(/^#/, '').trim()
+        })
+        .filter(Boolean)
+    }
+
+    function normalizeSuggestionList(data) {
+      const list = Array.isArray(data) ? data : []
+      return list
+        .map(function (s) {
+          return String(s).replace(/^#/, '').trim()
+        })
+        .filter(Boolean)
+    }
+
+    function mergeUnique(a, b) {
+      return [...new Set((a || []).concat(b || []))]
+    }
+
+    let suggestionList = []
+    let listList = []
+    let pending = 2
+
+    function finish() {
+      if (--pending !== 0) return
+      if (success) success(mergeUnique(suggestionList, listList))
+    }
+
     requestGet(
       info.apiUrl + 'api/v1/tag/suggestion',
       headers,
       function (data) {
-        const list = Array.isArray(data) ? data : []
-        const out = list
-          .map(function (s) {
-            return String(s).replace(/^#/, '').trim()
-          })
-          .filter(Boolean)
-        if (success) success(out)
+        suggestionList = normalizeSuggestionList(data)
+        finish()
       },
       function (xhr) {
-        // Some forks might only expose list.
+        // Ignore failures from the suggestion endpoint; the list endpoint may still work.
+        if (xhr && xhr.status !== 404 && xhr.status !== 405 && fail) fail(xhr)
+        else finish()
+      }
+    )
+
+    requestGet(
+      info.apiUrl + 'api/v1/tag',
+      headers,
+      function (data) {
+        listList = normalizeTagList(data)
+        finish()
+      },
+      function (xhr) {
         if (isNotFoundLikeXhr(xhr)) {
-          getTagList(info, success, fail)
+          finish()
           return
         }
         if (fail) fail(xhr)

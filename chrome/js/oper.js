@@ -321,6 +321,8 @@ function getMemoUid(memo) {
   if (!memo) return ''
   if (memo.uid != null && memo.uid !== '') return String(memo.uid)
   if (typeof memo.name === 'string' && memo.name) return memo.name.split('/').pop()
+  // v0.18.2 only exposes a numeric id.
+  if (memo.id != null && memo.id !== '') return String(memo.id)
   return ''
 }
 
@@ -482,12 +484,10 @@ function buildV1ResourceStreamUrl(info, resource) {
 
   if (resource.externalLink) return resource.externalLink
 
+  const isV023 = info.apiFlavor === 'v023'
+
   const name = typeof resource.name === 'string' ? resource.name.trim() : ''
   const filename = typeof resource.filename === 'string' ? resource.filename : ''
-  if (name.indexOf('attachments/') === 0 && filename) {
-    const url = root + 'file/' + name.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(filename)
-    return isImageResource(resource) ? url + '?thumbnail=true' : url
-  }
 
   function isImageResource(r) {
     if (!r) return false
@@ -495,6 +495,22 @@ function buildV1ResourceStreamUrl(info, resource) {
     if (t.startsWith('image/')) return true
     const fn = typeof r.filename === 'string' ? r.filename.toLowerCase() : ''
     return /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic)$/.test(fn)
+  }
+
+  // v0.23+: resources are served as static files via /file/{name}/{filename}.
+  if (isV023) {
+    if (resource.externalLink) return resource.externalLink
+    const resourceName = name.indexOf('resources/') === 0 ? name : ''
+    if (resourceName && filename) {
+      const url = root + 'file/' + resourceName + '/' + filename.split('/').map(encodeURIComponent).join('/')
+      return isImageResource(resource) ? url + '?thumbnail=true' : url
+    }
+    return ''
+  }
+
+  if (name.indexOf('attachments/') === 0 && filename) {
+    const url = root + 'file/' + name.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(filename)
+    return isImageResource(resource) ? url + '?thumbnail=true' : url
   }
 
   function isProbablyUid(s) {
@@ -920,11 +936,17 @@ $('#opensite').click(function () {
 // 0.23.1版本 GET api/v1/{parent}/tags 接口已移除，参考 https://github.com/usememos/memos/issues/4161 
 $('#tags').click(function () {
   get_info(function (info) {
+    //console.log('[memos-bber] tags click info:', info)
     if (info.apiUrl) {
       var tagDom = "";
       const adapter = getApiAdapter(info)
+      if (!adapter) {
+        //console.warn('[memos-bber] no adapter for tags')
+        return
+      }
 
       const renderTags = function (tags) {
+        //console.log('[memos-bber] tags result:', tags)
         const uniTags = [...new Set((Array.isArray(tags) ? tags : []).filter(Boolean))]
         $.each(uniTags, function (_, tag) {
           tagDom += '<span class="item-container">#' + tag + '</span>';
@@ -933,7 +955,8 @@ $('#tags').click(function () {
         $("#taglist").html(tagDom).slideToggle(500)
       }
 
-      adapter.listTags(renderTags, function () {
+      adapter.listTags(renderTags, function (err) {
+        //console.error('[memos-bber] tags failed:', err)
         $.message({ message: msg('placeApiUrl') })
       })
     } else {
@@ -1051,17 +1074,24 @@ $('#search').click(function () {
 
 $('#random').click(function () {
   get_info(function (info) {
+    //console.log('[memos-bber] random click info:', info)
     if (info.status) {
       $("#randomlist").html('').hide()
       const adapter = getApiAdapter(info)
+      if (!adapter) {
+        //console.warn('[memos-bber] no adapter for random')
+        return
+      }
 
       adapter.listRandomMemos(
         function (memos) {
+          console.log('[memos-bber] random result count:', memos && memos.length)
           let randomNum = Math.floor(Math.random() * (memos.length));
           var randomData = memos[randomNum]
           randDom(randomData)
         },
-        function () {
+        function (err) {
+          //console.error('[memos-bber] random failed:', err)
           $.message({ message: msg('placeApiUrl') })
         }
       )
