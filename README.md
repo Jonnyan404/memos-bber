@@ -16,7 +16,7 @@
 
 Android
 - 可直接用 chrome 扩展: https://github.com/uazo/cromite/releases
-- firefox 手机版
+- firefox 手机版  https://addons.mozilla.org/zh-CN/firefox/addon/memos-bber/
 - edge 手机版
 
 ### 使用教程
