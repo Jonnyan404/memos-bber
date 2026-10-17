@@ -54,23 +54,24 @@ function containerName(version) {
 }
 
 async function waitReady() {
-  for (let i = 0; i < 60; i++) {
-    let up = false
+  for (let i = 0; i < 90; i++) {
     try {
       const resp = await fetch(BASE_URL + '/api/v1/status', { signal: AbortSignal.timeout(1500) })
       const data = await resp.json().catch(() => null)
       if (resp.ok && data && data.profile && data.profile.version) return
-      // 0.23+ removed /status but still serves the SPA from "/".
-      if (!resp.ok || (data && data.code === 5)) {
-        const root = await fetch(BASE_URL + '/', { signal: AbortSignal.timeout(1500) })
-        up = root.ok
-      }
     } catch (_) {
       /* not ready */
     }
-    if (up) {
-      await sleep(1000)
-      return
+    // 0.23+ has no /status: probe a real API route and make sure the server is
+    // not answering 503/502 (DB still migrating). 401/200/400 all mean "up".
+    try {
+      const api = await fetch(BASE_URL + '/api/v1/memos?pageSize=1', { signal: AbortSignal.timeout(1500) })
+      if (api.status !== 503 && api.status !== 502 && api.status !== 0) {
+        await sleep(1500)
+        return
+      }
+    } catch (_) {
+      /* not ready */
     }
     await sleep(1000)
   }
@@ -291,7 +292,11 @@ async function runVersion(version) {
   const report = { version, checks: [], notes: [] }
   const name = await startContainer(version)
   try {
-    const session = await login()
+    let session = await login()
+    for (let attempt = 0; attempt < 3 && !session.token; attempt++) {
+      await sleep(2000)
+      session = await login()
+    }
     report.login = session
     if (!session.token) {
       report.checks.push({ name: 'login', ok: false, detail: session.attempts.join(' ') })
