@@ -59,6 +59,8 @@ jobs:
             extra: ''
           - label: sub-path
             extra: '--subpath /memos'
+          - label: edge-bundle
+            extra: '--extension edge'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
