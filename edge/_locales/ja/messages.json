@@ -193,5 +193,35 @@
   },
   "tipResize": {
     "message": "ドラッグで拡大/縮小（最小：初期サイズ）"
+  },
+  "serverVersionLabel": {
+    "message": "サーバーバージョン："
+  },
+  "serverVersionNew": {
+    "message": "新しい API を使用"
+  },
+  "serverVersionUnknown": {
+    "message": "未認識（互換モード）"
+  },
+  "errPublicForbidden": {
+    "message": "このサーバーは公開メモを禁止しています。「非公開」または「保護」に切り替えて再試行してください"
+  },
+  "errApiRemoved": {
+    "message": "サーバーは 26.10+ です（旧 API は削除済み）。拡張を更新してください"
+  },
+  "errAuth": {
+    "message": "アクセストークンが無効か期限切れです。再発行してください"
+  },
+  "errEndpoint": {
+    "message": "API が見つかりません。Memos の URL（サブパス含む）を確認してください"
+  },
+  "errNetwork": {
+    "message": "サーバーに接続できません。URL・ネットワーク・CORS を確認してください"
+  },
+  "errServer": {
+    "message": "サーバーエラーです。しばらくして再試行してください"
+  },
+  "randomEmpty": {
+    "message": "表示できるメモがありません"
   }
 }

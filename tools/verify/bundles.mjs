@@ -80,8 +80,9 @@ for (const bundle of BUNDLES) {
   check(bundle, 'default visibility is PRIVATE', /memo_lock:\s*'PRIVATE'/.test(oper) && !/memo_lock:\s*'PUBLIC'/.test(oper))
   check(bundle, 'no legacy adapter symbols', !/MemosApi(Modern|V023|V020V021)/.test(oper) && !/memosApi\.(adapter|modern|v0)/.test(html))
 
-  // locale files must parse and carry the new error strings (en/zh only)
-  for (const locale of ['en', 'zh_CN']) {
+  // every locale must carry the new error strings (English fallback is fine,
+  // but a missing key would silently show the raw key name)
+  for (const locale of ['en', 'zh_CN', 'de', 'es', 'fr', 'ja', 'ko']) {
     const localePath = path.join(dir, '_locales', locale, 'messages.json')
     try {
       const data = JSON.parse(read(localePath))

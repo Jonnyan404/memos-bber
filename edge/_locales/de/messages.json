@@ -193,5 +193,35 @@
   },
   "tipResize": {
     "message": "Zum Ändern der Größe ziehen (Minimum: Standardgröße)"
+  },
+  "serverVersionLabel": {
+    "message": "Serverversion:"
+  },
+  "serverVersionNew": {
+    "message": "neue API aktiv"
+  },
+  "serverVersionUnknown": {
+    "message": "nicht erkannt, Kompatibilitätsmodus"
+  },
+  "errPublicForbidden": {
+    "message": "Dieser Server verbietet öffentliche Memos; bitte auf Privat oder Geschützt wechseln"
+  },
+  "errApiRemoved": {
+    "message": "Server ist 26.10+ (alte API entfernt); bitte die Erweiterung aktualisieren"
+  },
+  "errAuth": {
+    "message": "Ungültiges oder abgelaufenes Token; bitte ein neues erzeugen"
+  },
+  "errEndpoint": {
+    "message": "API-Endpunkt nicht gefunden; Memos-URL inkl. Unterpfad prüfen"
+  },
+  "errNetwork": {
+    "message": "Server nicht erreichbar; URL, Netzwerk oder CORS prüfen"
+  },
+  "errServer": {
+    "message": "Serverfehler, bitte später erneut versuchen"
+  },
+  "randomEmpty": {
+    "message": "Kein Memo vorhanden"
   }
 }

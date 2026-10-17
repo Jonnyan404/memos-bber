@@ -193,5 +193,35 @@
   },
   "tipResize": {
     "message": "드래그로 확대/축소(최소: 기본 크기)"
+  },
+  "serverVersionLabel": {
+    "message": "서버 버전:"
+  },
+  "serverVersionNew": {
+    "message": "새 API 사용 중"
+  },
+  "serverVersionUnknown": {
+    "message": "인식 불가, 호환 모드"
+  },
+  "errPublicForbidden": {
+    "message": "이 서버는 공개 메모를 금지합니다. ‘비공개’ 또는 ‘보호’로 전환한 뒤 다시 시도하세요"
+  },
+  "errApiRemoved": {
+    "message": "서버가 26.10+ 입니다(구 API 제거됨). 확장을 업데이트하세요"
+  },
+  "errAuth": {
+    "message": "액세스 토큰이 유효하지 않거나 만료되었습니다. 새로 발급하세요"
+  },
+  "errEndpoint": {
+    "message": "API를 찾을 수 없습니다. Memos URL(하위 경로 포함)을 확인하세요"
+  },
+  "errNetwork": {
+    "message": "서버에 연결할 수 없습니다. URL, 네트워크 또는 CORS를 확인하세요"
+  },
+  "errServer": {
+    "message": "서버 오류입니다. 잠시 후 다시 시도하세요"
+  },
+  "randomEmpty": {
+    "message": "표시할 메모가 없습니다"
   }
 }

@@ -113,3 +113,8 @@ FIREFOX_PATH="/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox
 （`not allowed in this context`），Puppeteer / Playwright 也都不支持给 Firefox 装扩展。
 因此 Firefox 的弹窗交互目前只能手工验证：
 `web-ext run --source-dir firefox` 后点扩展图标。逻辑层由三端字节一致的 adapter + 16 版本矩阵覆盖。
+
+## 8. 纯函数单测
+
+`node tools/verify/unit.mjs` 覆盖 `parseVersion / eraOfVersion / memoRef / errorInfo / extractTags / normalizeResource`，
+不需要 Docker，CI 的 bundle job 会跑。

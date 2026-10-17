@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+      - name: Unit checks (pure adapter helpers)
+        run: node tools/verify/unit.mjs
       - name: Static checks (wiring, adapter parity, versions, locales)
         run: node tools/verify/bundles.mjs
 

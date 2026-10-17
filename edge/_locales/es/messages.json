@@ -193,5 +193,35 @@
   },
   "tipResize": {
     "message": "Arrastra para cambiar el tamaño (mín.: tamaño predeterminado)"
+  },
+  "serverVersionLabel": {
+    "message": "Versión del servidor:"
+  },
+  "serverVersionNew": {
+    "message": "API nueva en uso"
+  },
+  "serverVersionUnknown": {
+    "message": "no reconocida, modo compatibilidad"
+  },
+  "errPublicForbidden": {
+    "message": "Este servidor no permite memos públicos; cambia a Privado o Protegido e inténtalo de nuevo"
+  },
+  "errApiRemoved": {
+    "message": "El servidor es 26.10+ (API antigua eliminada); actualiza la extensión"
+  },
+  "errAuth": {
+    "message": "Token inválido o caducado; genera uno nuevo"
+  },
+  "errEndpoint": {
+    "message": "Endpoint no encontrado; revisa la URL de Memos (incluida la subruta)"
+  },
+  "errNetwork": {
+    "message": "No se puede conectar; revisa URL, red o CORS"
+  },
+  "errServer": {
+    "message": "Error del servidor; inténtalo más tarde"
+  },
+  "randomEmpty": {
+    "message": "No hay memos que mostrar"
   }
 }

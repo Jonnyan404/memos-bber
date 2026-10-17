@@ -553,7 +553,10 @@
         return
       }
       pages++
-      request(info, { path: 'memo?limit=' + limit + '&offset=' + offset + '&rowStatus=NORMAL' }, function (data) {
+      var legacyPath = 'memo?limit=' + limit + '&offset=' + offset + '&rowStatus=NORMAL'
+      if (opts.content) legacyPath += '&content=' + enc(opts.content)
+      if (opts.tag) legacyPath += '&tag=' + enc(String(opts.tag).replace(/^#/, ''))
+      request(info, { path: legacyPath }, function (data) {
         var list = extractList(data)
         out = out.concat(list)
         if (list.length < limit) {
@@ -584,28 +587,34 @@
         listLegacyPages(info, opts, callback, fail)
         return
       }
-      var out = []
-      var pages = 0
-      var token = ''
+      listAllWithPath(info, path, opts, callback, fail)
+    }, fail)
+  }
 
-      function next() {
-        if (pages >= maxPages) {
+  function listAllWithPath(info, path, options, callback, fail) {
+    var opts = options || {}
+    var maxPages = opts.maxPages && isFinite(opts.maxPages) ? Math.max(1, Math.floor(opts.maxPages)) : 20
+    var out = []
+    var pages = 0
+    var token = ''
+
+    function next() {
+      if (pages >= maxPages) {
+        callback(out)
+        return
+      }
+      pages++
+      fetchPage(info, path, token, function (list, nextToken) {
+        out = out.concat(list)
+        if (!nextToken || list.length === 0) {
           callback(out)
           return
         }
-        pages++
-        fetchPage(info, path, token, function (list, nextToken) {
-          out = out.concat(list)
-          if (!nextToken || list.length === 0) {
-            callback(out)
-            return
-          }
-          token = nextToken
-          next()
-        }, fail)
-      }
-      next()
-    }, fail)
+        token = nextToken
+        next()
+      }, fail)
+    }
+    next()
   }
 
   function listMemos(info, options, success, fail) {
@@ -911,17 +920,56 @@
 
   // ------------------------------------------------------- read-only features
 
+  function localMatch(memos, needle) {
+    var lower = String(needle || '').toLowerCase()
+    return (memos || []).filter(function (memo) {
+      return String(memo && memo.content ? memo.content : '').toLowerCase().indexOf(lower) !== -1
+    })
+  }
+
   function searchMemos(info, pattern, success, fail) {
-    var needle = String(pattern == null ? '' : pattern).toLowerCase()
-    listAll(info, {}, function (memos) {
-      if (!needle) {
-        success(memos)
-        return
-      }
-      success(memos.filter(function (memo) {
-        return String(memo && memo.content ? memo.content : '').toLowerCase().indexOf(needle) !== -1
-      }))
-    }, fail)
+    var needle = String(pattern == null ? '' : pattern)
+    if (!needle) {
+      listAll(info, {}, success, fail)
+      return
+    }
+
+    var era = eraOf(info)
+    var finishLocal = function (all) {
+      success(localMatch(all, needle))
+    }
+    var fallbackLocal = function () {
+      listAll(info, {}, finishLocal, fail)
+    }
+
+    // Legacy REST accepts `content` directly; verify the result and fall back
+    // to a full scan when the server returns nothing (case/tag differences).
+    if (era === ERA_LEGACY) {
+      listLegacyPages(info, { pageSize: 1000, content: needle }, function (list) {
+        if (list.length > 0) success(list)
+        else fallbackLocal()
+      }, fallbackLocal)
+      return
+    }
+
+    if (era === ERA_UNKNOWN) {
+      fallbackLocal()
+      return
+    }
+
+    // 0.25+ understands `content.contains(...)`; 0.22-0.24 reject it and fall
+    // back to the scan. An empty server answer is also re-checked locally
+    // because 0.24 applies the filter to public memos only.
+    if (era === ERA_V1_MODERN || era === ERA_V2) {
+      var path = 'memos?pageSize=1000&filter=' + enc('content.contains(' + JSON.stringify(needle) + ')')
+      listAllWithPath(info, path, { maxPages: 20 }, function (list) {
+        if (list.length > 0) success(list)
+        else fallbackLocal()
+      }, fallbackLocal)
+      return
+    }
+
+    fallbackLocal()
   }
 
   function collectTags(memos) {

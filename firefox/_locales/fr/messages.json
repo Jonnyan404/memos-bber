@@ -193,5 +193,35 @@
   },
   "tipResize": {
     "message": "Glisser pour redimensionner (min. : taille par défaut)"
+  },
+  "serverVersionLabel": {
+    "message": "Version du serveur :"
+  },
+  "serverVersionNew": {
+    "message": "nouvelle API utilisée"
+  },
+  "serverVersionUnknown": {
+    "message": "non reconnue, mode compatibilité"
+  },
+  "errPublicForbidden": {
+    "message": "Ce serveur interdit les mémos publics ; passez en Privé ou Protégé puis réessayez"
+  },
+  "errApiRemoved": {
+    "message": "Le serveur est en 26.10+ (ancienne API supprimée) ; mettez l’extension à jour"
+  },
+  "errAuth": {
+    "message": "Jeton invalide ou expiré ; générez-en un nouveau"
+  },
+  "errEndpoint": {
+    "message": "Point d’API introuvable ; vérifiez l’URL de Memos (sous-chemin inclus)"
+  },
+  "errNetwork": {
+    "message": "Serveur injoignable ; vérifiez l’URL, le réseau ou CORS"
+  },
+  "errServer": {
+    "message": "Erreur serveur ; réessayez plus tard"
+  },
+  "randomEmpty": {
+    "message": "Aucun mémo à afficher"
   }
 }
