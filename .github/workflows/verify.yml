@@ -68,8 +68,13 @@ jobs:
       - name: Start Memos
         run: |
           docker run -d --name memos -p 15400:5230 neosmemo/memos:0.31.0
-          for _ in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:15400/api/v1/status >/dev/null; then exit 0; fi
+          for _ in $(seq 1 90); do
+            # 0.24+ removed /api/v1/status; /instance/profile and the SPA both work.
+            if curl -sf http://127.0.0.1:15400/api/v1/instance/profile >/dev/null \
+              || curl -sf http://127.0.0.1:15400/ >/dev/null; then
+              sleep 2
+              exit 0
+            fi
             sleep 1
           done
           docker logs memos
