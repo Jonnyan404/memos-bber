@@ -181,6 +181,22 @@ function msg(key) {
   return chrome.i18n.getMessage(key) || ''
 }
 
+// Turn an adapter error ({kind,status,code,message,hint}) into a message that
+// tells the user what actually went wrong instead of a generic "failed".
+function memoErrorText(err) {
+  const info = err || {}
+  let key = 'memoFailed'
+  if (info.hint === 'publicForbidden') key = 'errPublicForbidden'
+  else if (info.status === 410 || info.hint === 'apiRemoved') key = 'errApiRemoved'
+  else if (info.kind === 'auth') key = 'errAuth'
+  else if (info.kind === 'network') key = 'errNetwork'
+  else if (info.kind === 'notfound') key = 'errEndpoint'
+  else if (info.kind === 'server') key = 'errServer'
+  const head = msg(key) || msg('memoFailed')
+  const detail = info.message ? ' · ' + info.message : ''
+  return head + detail
+}
+
 function applyDayjsLocaleByUiLanguage(uiLang) {
   const lang = String(uiLang || 'auto')
   if (lang === 'de') {
@@ -298,6 +314,9 @@ function get_info(callback) {
       apiUrl: '',
       apiTokens: '',
       apiFlavor: '',
+      apiVersion: '',
+      apiBase: '',
+      userRef: '',
       hidetag: '',
       showtag: '',
       memo_lock: '',
@@ -320,6 +339,9 @@ function get_info(callback) {
       returnObject.apiUrl = items.apiUrl
       returnObject.apiTokens = items.apiTokens
       returnObject.apiFlavor = items.apiFlavor
+      returnObject.apiVersion = items.apiVersion
+      returnObject.apiBase = items.apiBase
+      returnObject.userRef = items.userRef
       returnObject.hidetag = items.hidetag
       returnObject.showtag = items.showtag
       returnObject.memo_lock = items.memo_lock
@@ -358,10 +380,12 @@ get_info(function (info) {
   }
   var memoNow = info.memo_lock
   if (memoNow == '') {
+    // Never force PUBLIC: private-by-default matches the upstream default and
+    // avoids failing on instances that disallow public memos (issue #8).
     chrome.storage.sync.set(
-      { memo_lock: 'PUBLIC' }
+      { memo_lock: 'PRIVATE' }
     )
-    memoNow = 'PUBLIC'
+    memoNow = 'PRIVATE'
   }
   currentMemoLock = memoNow
   updateLockNowText(memoNow)
@@ -885,9 +909,9 @@ function uploadImage(file) {
           $.message({ message: msg('picFailed') })
         })
       },
-      function () {
+      function (err) {
         chrome.storage.sync.set({ open_action: '', open_content: '' }, function () {
-          $.message({ message: msg('picFailed') })
+          $.message({ message: memoErrorText(err) })
         })
       }
     )
@@ -916,36 +940,48 @@ function saveSettingsPanel() {
     return
   }
 
-  window.MemosApiModern.authWithFallback(apiUrl, apiTokens, function (auth) {
-    if (!auth || auth.userId == null) {
-      $.message({ message: msg('invalidToken') })
+  const adapter = window.MemosApiAdapter
+  if (!adapter || typeof adapter.detect !== 'function') {
+    $.message({ message: msg('memoFailed') })
+    return
+  }
+
+  // One round-trip detects the server version, the working API base
+  // (/api/v1 vs /api) and validates the token.
+  adapter.detect(apiUrl, apiTokens, function (err, result) {
+    if (err || !result) {
+      $.message({ message: memoErrorText(err) })
       return
     }
 
+    const known = adapter.KNOWN_ERAS.indexOf(result.era) !== -1
     chrome.storage.sync.set(
       Object.assign({}, customSettings, {
         apiUrl: apiUrl,
         apiTokens: apiTokens,
-        userid: auth.userId,
-        memoUiPath: auth.uiPath || 'memos',
-        apiFlavor: ''
+        userid: result.userId != null ? result.userId : '',
+        userRef: result.userRef || '',
+        memoUiPath: result.uiPath || 'memos',
+        apiFlavor: known ? result.flavor : '',
+        apiVersion: result.version || '',
+        apiBase: result.base || ''
       }),
       function () {
         $.message({ message: msg('saveSuccess') })
         $('#blog_info').hide()
-
-        // Auto-detect API flavor once; keep default behavior when unknown.
-        if (window.MemosApiAdapter && typeof window.MemosApiAdapter.probeFlavor === 'function') {
-          window.MemosApiAdapter.probeFlavor(apiUrl, apiTokens, function (res) {
-            const flavor = res && res.flavor ? res.flavor : ''
-            if (window.MemosApiAdapter.KNOWN_FLAVORS.indexOf(flavor) !== -1) {
-              chrome.storage.sync.set({ apiFlavor: flavor })
-            }
-          })
-        }
+        updateServerVersionLabel(result)
       }
     )
   })
+}
+
+function updateServerVersionLabel(result) {
+  const el = document.getElementById('supportedMemosVersion')
+  if (!el || !result || !result.version) return
+  const era = result.era || ''
+  const label = msg('serverVersionLabel')
+  const suffix = era === 'v2' ? msg('serverVersionNew') : era === 'unknown' ? msg('serverVersionUnknown') : ''
+  el.textContent = label + ' ' + result.version + (suffix ? ' · ' + suffix : '')
 }
 
 $('#saveSettings').click(function () {
@@ -1110,7 +1146,10 @@ $('#random').click(function () {
 
       adapter.listRandomMemos(
         function (memos) {
-          console.log('[memos-bber] random result count:', memos && memos.length)
+          if (!memos || memos.length === 0) {
+            $.message({ message: msg('randomEmpty') })
+            return
+          }
           let randomNum = Math.floor(Math.random() * (memos.length));
           var randomData = memos[randomNum]
           randDom(randomData)
@@ -1330,11 +1369,13 @@ function sendText(preparedContent) {
             }
           )
         },
-        function () {
+        function (err) {
+          // Keep the draft and the uploaded attachment references so the user
+          // can retry after fixing the cause (e.g. visibility not allowed).
           chrome.storage.sync.set(
-            { open_action: '', open_content: '', resourceIdList: [] },
+            { open_action: '', open_content: content },
             function () {
-              $.message({ message: msg('memoFailed') })
+              $.message({ message: memoErrorText(err) })
             }
           )
         }

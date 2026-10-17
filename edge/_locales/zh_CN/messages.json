@@ -21,7 +21,7 @@
       "message": "保存"
    },
    "supportedMemosVersion": {
-      "message": "兼容 Memos v0.15.0 - 0.30.x"
+      "message": "兼容 Memos v0.15.0 - 26.10+"
    },
    "settingsConnectionTitle": {
       "message": "连接设置"
@@ -193,5 +193,35 @@
    },
    "tipResize": {
       "message": "拖拽缩放编辑框（最小为默认大小）"
+   },
+   "serverVersionLabel": {
+      "message": "服务端版本："
+   },
+   "serverVersionNew": {
+      "message": "已按新接口适配"
+   },
+   "serverVersionUnknown": {
+      "message": "无法识别，已按兼容模式连接"
+   },
+   "errPublicForbidden": {
+      "message": "服务端禁止发布公开备忘录，请切换为“私有”或“受保护”后重试"
+   },
+   "errApiRemoved": {
+      "message": "服务端已升级到 26.10+（旧接口已移除），请更新插件"
+   },
+   "errAuth": {
+      "message": "访问令牌无效或已过期，请重新生成并填写"
+   },
+   "errEndpoint": {
+      "message": "接口地址不存在，请检查 Memos 网址（含子路径）是否正确"
+   },
+   "errNetwork": {
+      "message": "无法连接服务器，请检查网址、网络或跨域设置"
+   },
+   "errServer": {
+      "message": "服务端返回错误，请稍后重试"
+   },
+   "randomEmpty": {
+      "message": "没有可展示的备忘录"
    }
 }

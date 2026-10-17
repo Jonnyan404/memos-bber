@@ -21,7 +21,7 @@
       "message": "Save"
    },
    "supportedMemosVersion": {
-      "message": "Compatible with Memos v0.15.0 - 0.30.x"
+      "message": "Compatible with Memos v0.15.0 - 26.10+"
    },
    "settingsConnectionTitle": {
       "message": "Connection"
@@ -193,5 +193,35 @@
    },
    "tipResize": {
       "message": "Drag to resize (min: default size)"
+   },
+   "serverVersionLabel": {
+      "message": "Server version:"
+   },
+   "serverVersionNew": {
+      "message": "new API in use"
+   },
+   "serverVersionUnknown": {
+      "message": "unrecognized, using compatibility mode"
+   },
+   "errPublicForbidden": {
+      "message": "This server disallows public memos; switch to Private or Protected and retry"
+   },
+   "errApiRemoved": {
+      "message": "Server is 26.10+ (legacy API removed); please update this extension"
+   },
+   "errAuth": {
+      "message": "Invalid or expired access token; generate a new one"
+   },
+   "errEndpoint": {
+      "message": "API endpoint not found; check the Memos URL (including sub-path)"
+   },
+   "errNetwork": {
+      "message": "Cannot reach the server; check URL, network or CORS"
+   },
+   "errServer": {
+      "message": "Server error, please retry later"
+   },
+   "randomEmpty": {
+      "message": "No memo to show"
    }
 }

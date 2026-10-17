@@ -4,7 +4,7 @@
 
 ## 更新日志
 
-- 当前支持memos `v0.15.0 - v0.30.x` [点击查看详细更新日志](https://raw.githubusercontent.com/Jonnyan404/memos-bber/refs/heads/main/change.log)
+- 当前支持memos `v0.15.0 - 26.10+` [点击查看详细更新日志](https://raw.githubusercontent.com/Jonnyan404/memos-bber/refs/heads/main/change.log)
 
 ## 在线商店安装
 
@@ -22,4 +22,4 @@ Android
 ### 使用教程
 
 - 在文本框输入想搜索的关键字,点击搜索按钮
-- 随机和搜索功能在 `0.24` 以上版本支持私有权限的 memo，其他版本不支持
+- 随机和搜索功能在所有受支持版本中都包含自己的私有 memo
