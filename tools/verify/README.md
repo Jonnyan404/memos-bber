@@ -98,3 +98,18 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 ```bash
 node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" --subpath /memos
 ```
+
+## 7. Firefox（MV2）
+
+`tools/verify/firefox-smoke.mjs` 用 WebDriver BiDi 的 `webExtension.install` 把 `firefox/` 装进真实 Firefox，
+断言扩展被接受（ID 与 manifest 版本一致）：
+
+```bash
+FIREFOX_PATH="/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox" \
+  node tools/verify/firefox-smoke.mjs
+```
+
+**UI 自动化受限（上游限制，不是配置问题）**：Firefox 的 BiDi 拒绝导航到 `moz-extension://`
+（`not allowed in this context`），Puppeteer / Playwright 也都不支持给 Firefox 装扩展。
+因此 Firefox 的弹窗交互目前只能手工验证：
+`web-ext run --source-dir firefox` 后点扩展图标。逻辑层由三端字节一致的 adapter + 16 版本矩阵覆盖。
