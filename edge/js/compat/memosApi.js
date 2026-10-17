@@ -470,21 +470,8 @@
   // and the accepted filter changes twice. We therefore try a short ladder of
   // queries derived from the detected version and stop at the first one that
   // returns data, falling back to a plain list when everything is empty.
-  function listMemos(info, options, success, fail) {
-    var opts = options || {}
+  function buildCandidates(info, limit) {
     var era = eraOf(info)
-    var limit = opts.pageSize && isFinite(opts.pageSize) ? Math.max(1, Math.floor(opts.pageSize)) : 1000
-
-    if (era === ERA_LEGACY) {
-      var legacyQs = 'memo?limit=' + limit + '&rowStatus=NORMAL'
-      if (opts.content) legacyQs += '&content=' + enc(opts.content)
-      if (opts.tag) legacyQs += '&tag=' + enc(String(opts.tag).replace(/^#/, ''))
-      request(info, { path: legacyQs }, function (data) {
-        success(extractList(data))
-      }, fail)
-      return
-    }
-
     var ref = info.userRef || (detectCache[info.apiUrl] && detectCache[info.apiUrl].userRef) || ''
     var refTail = ref ? ref.split('/').pop() : ''
 
@@ -506,36 +493,31 @@
     if (cached && candidates.indexOf(cached) !== -1) {
       candidates = [cached].concat(candidates.filter(function (p) { return p !== cached }))
     }
+    return candidates
+  }
 
+  function pickListPath(info, limit, success, fail) {
+    var candidates = buildCandidates(info, limit)
     var index = 0
-    var emptyResult = null
+    var fallback = ''
+
     function next() {
       if (index >= candidates.length) {
-        if (era === ERA_UNKNOWN) {
-          // Pre-0.22 install that never stored a flavor: singular endpoint.
-          request(info, { path: 'memo?limit=' + limit + '&rowStatus=NORMAL' }, function (data) {
-            success(extractList(data))
-          }, function () {
-            success(emptyResult || [])
-          })
-          return
-        }
-        success(emptyResult || [])
+        success(fallback || '')
         return
       }
       var path = candidates[index++]
       request(info, { path: path }, function (data) {
         var list = extractList(data)
-        if (list.length > 0 || !emptyResult) emptyResult = list
+        if (!fallback) fallback = path
         if (list.length > 0) {
           if (info.apiUrl && detectCache[info.apiUrl]) detectCache[info.apiUrl].listPath = path
-          success(list)
+          success(path)
           return
         }
-        // A cached path that suddenly returns nothing should not hide data.
         next()
       }, function (err) {
-        // 400/500: this build does not understand the filter.
+        // 400/500: the build does not understand the filter.
         // 200 without JSON: the route is missing and the SPA answered instead.
         if (err.status === 400 || err.status === 500 || err.status === 200) {
           next()
@@ -547,8 +529,87 @@
     next()
   }
 
-  function listAll(info, callback, fail) {
-    listMemos(info, { pageSize: 1000 }, callback, fail)
+  function fetchPage(info, path, token, callback, fail) {
+    var url = path
+    if (token) url += (path.indexOf('?') === -1 ? '?' : '&') + 'pageToken=' + enc(token)
+    request(info, { path: url }, function (data) {
+      var list = extractList(data)
+      var nextToken = data && (data.nextPageToken || data.next_page_token)
+      callback(list, typeof nextToken === 'string' ? nextToken : '')
+    }, fail)
+  }
+
+  function listLegacyPages(info, options, success, fail) {
+    var opts = options || {}
+    var limit = opts.pageSize && isFinite(opts.pageSize) ? Math.max(1, Math.floor(opts.pageSize)) : 1000
+    var maxPages = opts.maxPages && isFinite(opts.maxPages) ? Math.max(1, Math.floor(opts.maxPages)) : 20
+    var offset = 0
+    var pages = 0
+    var out = []
+
+    function next() {
+      if (pages >= maxPages) {
+        success(out)
+        return
+      }
+      pages++
+      request(info, { path: 'memo?limit=' + limit + '&offset=' + offset + '&rowStatus=NORMAL' }, function (data) {
+        var list = extractList(data)
+        out = out.concat(list)
+        if (list.length < limit) {
+          success(out)
+          return
+        }
+        offset += list.length
+        next()
+      }, fail)
+    }
+    next()
+  }
+
+  function listAll(info, options, callback, fail) {
+    var opts = options || {}
+    var era = eraOf(info)
+    var limit = opts.pageSize && isFinite(opts.pageSize) ? Math.max(1, Math.floor(opts.pageSize)) : 1000
+    var maxPages = opts.maxPages && isFinite(opts.maxPages) ? Math.max(1, Math.floor(opts.maxPages)) : 20
+
+    if (era === ERA_LEGACY) {
+      listLegacyPages(info, opts, callback, fail)
+      return
+    }
+
+    pickListPath(info, limit, function (path) {
+      if (!path) {
+        // Undetected pre-0.22 install: no plural collection at all.
+        listLegacyPages(info, opts, callback, fail)
+        return
+      }
+      var out = []
+      var pages = 0
+      var token = ''
+
+      function next() {
+        if (pages >= maxPages) {
+          callback(out)
+          return
+        }
+        pages++
+        fetchPage(info, path, token, function (list, nextToken) {
+          out = out.concat(list)
+          if (!nextToken || list.length === 0) {
+            callback(out)
+            return
+          }
+          token = nextToken
+          next()
+        }, fail)
+      }
+      next()
+    }, fail)
+  }
+
+  function listMemos(info, options, success, fail) {
+    listAll(info, Object.assign({ maxPages: 1 }, options || {}), success, fail)
   }
 
   function createMemo(info, params, success, fail) {
@@ -678,7 +739,7 @@
         return
       }
       // 0.18-0.21 callers may hold a bare uid: resolve it to the numeric id.
-      listMemos(info, { pageSize: 1000 }, function (memos) {
+      listAll(info, { pageSize: 1000, maxPages: 5 }, function (memos) {
         var hit = (memos || []).filter(function (memo) {
           return memo && (memo.name === target || memo.uid === target)
         })[0]
@@ -852,7 +913,7 @@
 
   function searchMemos(info, pattern, success, fail) {
     var needle = String(pattern == null ? '' : pattern).toLowerCase()
-    listAll(info, function (memos) {
+    listAll(info, {}, function (memos) {
       if (!needle) {
         success(memos)
         return
@@ -878,13 +939,13 @@
   }
 
   function listTags(info, success, fail) {
-    listAll(info, function (memos) {
+    listAll(info, {}, function (memos) {
       success(collectTags(memos))
     }, fail)
   }
 
   function listRandomMemos(info, success, fail) {
-    listAll(info, function (memos) {
+    listAll(info, {}, function (memos) {
       success(memos)
     }, fail)
   }
@@ -902,6 +963,9 @@
       },
       listMemos: function (options, success, fail) {
         listMemos(info, options, success, fail)
+      },
+      listAllMemos: function (options, success, fail) {
+        listAll(info, options || {}, success, fail)
       },
       listTags: function (success, fail) {
         listTags(info, success, fail)

@@ -57,7 +57,15 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 ```
 
 参数：`--extension`（目录）、`--chrome`/`CHROME_PATH`、`--port`（调试端口，默认 9444）、
-`--scenario success|public-forbidden`、`--text`（发送内容）。
+`--scenario success|public-forbidden|invalid-token`、`--subpath /memos`、`--text`（发送内容）。
+
+场景：
+
+| `--scenario` | 期望 |
+|---|---|
+| `success`（默认） | toast「发送成功」，服务端能查到该条 |
+| `public-forbidden` | 服务端禁用公开时，toast 指出具体原因且不产生 memo |
+| `invalid-token` | 保存阶段即提示令牌无效/URL 错误，不写入设置 |
 
 ## 4. 它做了什么 / 坑
 
@@ -69,3 +77,24 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 - `chrome.storage` 是回调式 API：在 `Runtime.evaluate` 里返回 Promise 时必须传
   `awaitPromise: true`，否则拿到 Promise 对象会被误判为“已保存”。
 - 设置保存会先探测服务端版本，冷启动容器可能让首次请求失败；脚本会自动重点一次保存。
+
+## 5. 版本号与 CI
+
+- 版本号只有一处：仓库根目录 `VERSION`。改版本用它，不要手改 manifest：
+  ```bash
+  node tools/set-version.mjs 2026.11.01   # 同时写 VERSION 与三端 manifest
+  ```
+  `tools/verify/bundles.mjs` 会校验三端 manifest 与 `VERSION` 一致。
+- `.github/workflows/verify.yml`：
+  - 每次 push / PR：bundle 静态检查 + 矩阵子集（0.15 / 0.23 / 0.26 / 0.31 / 26.10）
+  - 每晚 18:00 UTC：完整 16 版本矩阵
+  - Browser UI job：起 0.31 容器、装 Chrome for Testing，分别跑根路径与 `--subpath /memos` 两种部署
+
+## 6. 子路径部署
+
+`--subpath /memos` 会在本地起一个反向代理（随机端口），把 `http://127.0.0.1:<port>/memos/`
+转发到 `--url`，然后让扩展把这个带前缀的地址当作 `apiUrl`。用于验证反向代理子路径场景：
+
+```bash
+node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" --subpath /memos
+```

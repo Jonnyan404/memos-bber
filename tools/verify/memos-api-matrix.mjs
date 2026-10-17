@@ -333,6 +333,22 @@ async function runVersion(version) {
     const random = await callWith((ok, bad) => api.listRandomMemos(ok, bad))
     report.checks.push({ name: 'listRandomMemos', ok: Array.isArray(random) && random.length >= 1, detail: String((random || []).length) })
 
+    // Pagination: create a few more memos and walk them with a tiny page size.
+    const marks = [stamp]
+    for (let i = 2; i <= 4; i++) {
+      const extra = await callWith((ok, bad) =>
+        api.createMemo({ content: `${stamp}-p${i}`, visibility: 'PRIVATE', resourceIdList: [] }, ok, bad)
+      )
+      marks.push(`${stamp}-p${i}`)
+    }
+    const allPages = await callWith((ok, bad) => api.listAllMemos({ pageSize: 2 }, ok, bad))
+    const seen = new Set((allPages || []).map((m) => String(m.content || '')))
+    report.checks.push({
+      name: 'pagination',
+      ok: marks.every((mark) => [...seen].some((content) => content.includes(mark))),
+      detail: `${(allPages || []).length} memos over pageSize=2`
+    })
+
     const ref = A.memoRef(created)
     const fetched = await callWith((ok, bad) => api.getMemo(ref, ok, bad))
     report.checks.push({ name: 'getMemo', ok: Boolean(fetched && String(fetched.content || '').indexOf(stamp) !== -1), detail: ref })
@@ -370,7 +386,20 @@ async function runVersion(version) {
   return report
 }
 
+async function assertPortFree() {
+  try {
+    const resp = await fetch(BASE_URL + '/api/v1/status', { signal: AbortSignal.timeout(1500) })
+    if (resp.ok || resp.status === 404) {
+      throw new Error(`port ${PORT} already serves a Memos instance; stop it or change PORT`)
+    }
+  } catch (err) {
+    if (err && /already serves/.test(err.message)) throw err
+    // Connection refused is what we want.
+  }
+}
+
 async function main() {
+  await assertPortFree()
   const versions = ONLY ? VERSIONS.filter((v) => ONLY.includes(v)) : VERSIONS
   const reports = []
   for (const version of versions) {

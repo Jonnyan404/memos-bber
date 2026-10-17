@@ -94,6 +94,20 @@ for (const bundle of BUNDLES) {
   }
 }
 
+// VERSION at the repo root is the single source of truth for all manifests.
+const versionFile = path.join(ROOT, 'VERSION')
+const expectedVersion = exists(versionFile) ? read(versionFile).trim() : ''
+check('shared', 'VERSION file exists', Boolean(expectedVersion), expectedVersion)
+for (const bundle of BUNDLES) {
+  let actual = ''
+  try {
+    actual = JSON.parse(read(path.join(ROOT, bundle, 'manifest.json'))).version || ''
+  } catch (_) {
+    actual = ''
+  }
+  check('shared', `${bundle} version matches VERSION`, actual === expectedVersion, `${actual} vs ${expectedVersion}`)
+}
+
 // Shared adapter must be identical across bundles.
 const adapterHashes = BUNDLES.map((b) => [b, hash(path.join(ROOT, b, 'js/compat/memosApi.js'))])
 const unique = new Set(adapterHashes.map(([, h]) => h))

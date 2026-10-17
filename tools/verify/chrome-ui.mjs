@@ -19,9 +19,10 @@
  *
  * Flags: --headless=false to watch it, --keep to leave the browser open.
  */
-import { execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,7 +37,9 @@ function arg(name, fallback = '') {
 }
 const has = (name) => process.argv.includes('--' + name)
 
-const URL_BASE = arg('url', 'http://127.0.0.1:15400/').replace(/\/+$/, '') + '/'
+const TARGET_URL = arg('url', 'http://127.0.0.1:15400/').replace(/\/+$/, '') + '/'
+const SUBPATH = arg('subpath', '')
+let URL_BASE = TARGET_URL
 const TOKEN = arg('token', process.env.MEMOS_TOKEN || '')
 const EXT_DIR = path.resolve(ROOT, arg('extension', 'chrome'))
 const SCENARIO = arg('scenario', 'success')
@@ -78,6 +81,42 @@ function findChrome() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Serve the Memos instance under a sub-path (e.g. https://host/memos/) so the
+// extension's apiUrl-with-prefix handling is exercised, not just root deploys.
+async function startSubpathProxy(targetBase, prefix) {
+  const target = new URL(targetBase)
+  const server = http.createServer(async (req, res) => {
+    if (req.url !== prefix && !req.url.startsWith(prefix + '/')) {
+      res.writeHead(404)
+      res.end('not under ' + prefix)
+      return
+    }
+    const rest = req.url.slice(prefix.length) || '/'
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const headers = { ...req.headers }
+    delete headers.host
+    delete headers.connection
+    try {
+      const upstream = await fetch(target.origin + target.pathname.replace(/\/$/, '') + rest, {
+        method: req.method,
+        headers,
+        body: chunks.length ? Buffer.concat(chunks) : undefined,
+        redirect: 'manual'
+      })
+      const responseHeaders = Object.fromEntries(upstream.headers)
+      res.writeHead(upstream.status, responseHeaders)
+      res.end(Buffer.from(await upstream.arrayBuffer()))
+    } catch (err) {
+      res.writeHead(502)
+      res.end(String(err && err.message ? err.message : err))
+    }
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  return { server, base: `http://127.0.0.1:${port}${prefix}/` }
+}
 
 class Cdp {
   constructor(wsUrl) {
@@ -175,6 +214,17 @@ async function waitFor(cdp, expression, timeoutMs = 8000) {
   return false
 }
 
+async function readToast(cdp, timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const text = await evaluate(cdp, `(document.querySelector('.tip-info') || {}).textContent || ''`).catch(() => '')
+    // Skip the transient "sending" toast, keep the final outcome.
+    if (text && !/发送中|Sending/i.test(text)) return text
+    await sleep(200)
+  }
+  return ''
+}
+
 async function serverMemos() {
   const resp = await fetch(URL_BASE + 'api/v1/memos?pageSize=20', {
     headers: { Authorization: 'Bearer ' + TOKEN }
@@ -198,7 +248,22 @@ async function main() {
     `--load-extension=${EXT_DIR}`
   ]
   if (HEADLESS) args.push('--headless=new')
+  if (process.env.CI) args.push('--no-sandbox', '--disable-dev-shm-usage')
   args.push('about:blank')
+
+  try {
+    const stale = await fetch(`http://127.0.0.1:${PORT}/json/version`, { signal: AbortSignal.timeout(800) })
+    if (stale.ok) throw new Error(`debug port ${PORT} is already in use; another run may be stuck`)
+  } catch (err) {
+    if (err && /already in use/.test(err.message)) throw err
+  }
+
+  let proxy = null
+  if (SUBPATH && SUBPATH !== '/') {
+    proxy = await startSubpathProxy(TARGET_URL, SUBPATH.replace(/\/+$/, ''))
+    URL_BASE = proxy.base
+    console.log('sub-path proxy:', URL_BASE, '->', TARGET_URL)
+  }
 
   const child = spawn(chrome, args, { stdio: 'ignore' })
   const cleanup = () => {
@@ -206,6 +271,13 @@ async function main() {
       child.kill('SIGKILL')
     } catch (_) {
       /* ignore */
+    }
+    if (proxy) {
+      try {
+        proxy.server.close()
+      } catch (_) {
+        /* ignore */
+      }
     }
     if (!KEEP) fs.rmSync(profile, { recursive: true, force: true })
   }
@@ -250,6 +322,16 @@ async function main() {
     )
     console.log('inputs:', filled)
 
+    if (SCENARIO === 'invalid-token') {
+      // The failure toast disappears after ~2s, so read it before any retry.
+      const toast = await readToast(cdp, 5000)
+      const ok = /令牌|token|url/i.test(toast)
+      console.log('toast:', JSON.stringify(toast))
+      console.log(ok ? 'PASS invalid token rejected with a specific reason' : 'FAIL expected an auth/url error toast')
+      if (!ok) process.exitCode = 1
+      return
+    }
+
     const isSavedExpr = `new Promise((resolve) => chrome.storage.sync.get(['apiUrl','apiTokens','apiVersion','apiBase'], (v) => resolve(Boolean(v.apiUrl && v.apiTokens))))`
     let saved = await waitFor(cdp, isSavedExpr, 8000)
     if (!saved) {
@@ -284,15 +366,7 @@ async function main() {
       })()`
     )
 
-    const toast = await (async () => {
-      for (let i = 0; i < 80; i++) {
-        const text = await evaluate(cdp, `(document.querySelector('.tip-info') || {}).textContent || ''`).catch(() => '')
-        // Skip the transient "sending" toast, keep the final outcome.
-        if (text && !/发送中|Sending/i.test(text)) return text
-        await sleep(200)
-      }
-      return ''
-    })()
+    const toast = await readToast(cdp)
     console.log('toast:', JSON.stringify(toast))
 
     const memos = await serverMemos()

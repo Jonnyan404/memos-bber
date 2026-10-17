@@ -1,0 +1,106 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundles:
+    name: Bundle checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Static checks (wiring, adapter parity, versions, locales)
+        run: node tools/verify/bundles.mjs
+
+  api-matrix:
+    name: API matrix (${{ github.event_name == 'pull_request' && 'subset' || 'all releases' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Run container matrix
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node tools/verify/memos-api-matrix.mjs --only 0.15.0,0.23.1,0.26.1,0.31.0,26.10-rc.1
+          else
+            node tools/verify/memos-api-matrix.mjs
+          fi
+      - name: Upload matrix report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-matrix-report
+          path: tools/verify/last-run.json
+          if-no-files-found: ignore
+
+  browser-ui:
+    name: Popup UI (Chrome ${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: root
+            extra: ''
+          - label: sub-path
+            extra: '--subpath /memos'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Start Memos
+        run: |
+          docker run -d --name memos -p 15400:5230 neosmemo/memos:0.31.0
+          for _ in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:15400/api/v1/status >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs memos
+          exit 1
+
+      - name: Provision user and token
+        run: |
+          curl -sf -X POST http://127.0.0.1:15400/api/v1/users \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"tester","password":"Passw0rd!123","role":"ADMIN"}'
+          TOKEN=$(curl -sf -X POST http://127.0.0.1:15400/api/v1/auth/signin \
+            -H 'Content-Type: application/json' \
+            -d '{"passwordCredentials":{"username":"tester","password":"Passw0rd!123"}}' | jq -r .accessToken)
+          test -n "$TOKEN"
+          echo "MEMOS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Install Chrome for Testing
+        run: |
+          npx --yes @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/chrome"
+          CHROME_PATH=$(find "$RUNNER_TEMP/chrome" -type f -name chrome | head -1)
+          test -x "$CHROME_PATH"
+          echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+
+      - name: Drive the real popup
+        run: |
+          node tools/verify/chrome-ui.mjs \
+            --url http://127.0.0.1:15400/ \
+            --token "$MEMOS_TOKEN" \
+            --text "ci-${{ matrix.label }}-${{ github.run_id }}" \
+            ${{ matrix.extra }}
+
+      - name: Stop Memos
+        if: always()
+        run: docker rm -f memos || true
