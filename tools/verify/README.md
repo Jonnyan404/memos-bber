@@ -66,6 +66,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `success`（默认） | toast「发送成功」，服务端能查到该条 |
 | `public-forbidden` | 服务端禁用公开时，toast 指出具体原因且不产生 memo |
 | `invalid-token` | 保存阶段即提示令牌无效/URL 错误，不写入设置 |
+| `upload` | 通过真实文件选择框上传 PNG，空正文发送后服务端 memo 带 1 个附件 |
 
 ## 4. 它做了什么 / 坑
 

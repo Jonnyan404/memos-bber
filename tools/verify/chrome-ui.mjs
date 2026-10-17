@@ -47,6 +47,8 @@ const HEADLESS = arg('headless', 'true') !== 'false'
 const KEEP = has('keep')
 const PORT = Number(arg('port', '9444'))
 const TEXT = arg('text', 'chrome-ui check ' + new Date().toISOString())
+const PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 if (!TOKEN) {
   console.error('missing --token (Memos access token)')
@@ -361,6 +363,23 @@ async function main() {
     const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, { awaitPromise: true })
     console.log(`saved: version=${stored.apiVersion || '-'} base=${stored.apiBase || '-'} era=${stored.apiFlavor || '-'}`)
 
+    if (SCENARIO === 'upload') {
+      const png = path.join(os.tmpdir(), `memos-upload-${Date.now()}.png`)
+      fs.writeFileSync(png, Buffer.from(PNG_BASE64, 'base64'))
+      await cdp.send('DOM.enable')
+      const doc = await cdp.send('DOM.getDocument', { depth: -1 })
+      const input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#inFile' })
+      if (!input.nodeId) throw new Error('file input not found')
+      await cdp.send('DOM.setFileInputFiles', { files: [png], nodeId: input.nodeId })
+      const uploaded = await waitFor(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length > 0)))`,
+        15000
+      )
+      if (!uploaded) throw new Error('attachment was not uploaded')
+      console.log('attachment uploaded through the real file input')
+    }
+
     // --- choose visibility for the failure scenario
     if (SCENARIO === 'public-forbidden') {
       await evaluate(cdp, `(() => { const el = document.querySelector('#lockPublic'); if (el) el.click(); return true })()`)
@@ -373,7 +392,7 @@ async function main() {
       cdp,
       `(() => {
         const area = document.querySelector('textarea[name=text]')
-        area.value = ${JSON.stringify(TEXT)}
+        area.value = ${SCENARIO === 'upload' ? "''" : JSON.stringify(TEXT)}
         area.dispatchEvent(new Event('input', { bubbles: true }))
         document.querySelector('#content_submit_text').click()
         return true
@@ -387,7 +406,15 @@ async function main() {
     const found = memos.filter((m) => String(m.content || '').indexOf(TEXT) !== -1)
 
     let ok = false
-    if (SCENARIO === 'public-forbidden') {
+    if (SCENARIO === 'upload') {
+      const withAttachment = memos.filter((m) => (m.attachments || []).length > 0)
+      ok = withAttachment.length >= 1
+      console.log(
+        ok
+          ? `PASS attachment published (${withAttachment[0].name}, attachments=${withAttachment[0].attachments.length})`
+          : 'FAIL no memo with an attachment on the server'
+      )
+    } else if (SCENARIO === 'public-forbidden') {
       ok = /禁止发布公开|disallows public/i.test(toast) && found.length === 0
       console.log(ok ? 'PASS public memo rejected with a specific reason' : 'FAIL expected a public-forbidden toast and no server memo')
     } else {

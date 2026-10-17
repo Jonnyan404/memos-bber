@@ -58,6 +58,29 @@
   var baseCache = Object.create(null)
   var detectCache = Object.create(null)
 
+  // Reading tags/random/search each used to walk every page again. Keep one
+  // short-lived snapshot per instance and drop it on any mutation.
+  var listCache = Object.create(null)
+  var LIST_CACHE_TTL = 30 * 1000
+
+  function cacheRead(info) {
+    var entry = listCache[info.apiUrl]
+    if (!entry) return null
+    if (Date.now() - entry.at > LIST_CACHE_TTL) {
+      delete listCache[info.apiUrl]
+      return null
+    }
+    return entry.list
+  }
+
+  function cacheWrite(info, list) {
+    listCache[info.apiUrl] = { at: Date.now(), list: list }
+  }
+
+  function cacheClear(info) {
+    delete listCache[info.apiUrl]
+  }
+
   function normalizeApiUrl(url) {
     var value = typeof url === 'string' ? url.trim() : ''
     if (!value) return ''
@@ -617,6 +640,18 @@
     next()
   }
 
+  function readAll(info, success, fail) {
+    var cached = cacheRead(info)
+    if (cached) {
+      success(cached)
+      return
+    }
+    listAll(info, {}, function (list) {
+      cacheWrite(info, list)
+      success(list)
+    }, fail)
+  }
+
   function listMemos(info, options, success, fail) {
     listAll(info, Object.assign({ maxPages: 1 }, options || {}), success, fail)
   }
@@ -636,6 +671,7 @@
       }
       if (visibility) legacyBody.visibility = visibility
       request(info, { path: 'memo', method: 'POST', body: legacyBody }, function (data) {
+        cacheClear(info)
         var entity = data && data.memo ? data.memo : data
         success(entity)
       }, fail)
@@ -651,6 +687,7 @@
     if (payload.space) body.space = payload.space
 
     request(info, { path: 'memos', method: 'POST', body: body }, function (data) {
+      cacheClear(info)
       var created = data && data.memo ? data.memo : data
       var ref = memoRef(created)
       if (!ref) {
@@ -788,7 +825,10 @@
         if (fail) fail({ kind: 'client', status: 400, code: null, message: 'memo id missing', hint: 'memo' })
         return
       }
-      request(info, { path: 'memo/' + id, method: 'PATCH', body: { rowStatus: 'ARCHIVED' } }, success, fail)
+      request(info, { path: 'memo/' + id, method: 'PATCH', body: { rowStatus: 'ARCHIVED' } }, function (data) {
+        cacheClear(info)
+        success(data)
+      }, fail)
       return
     }
     var ref = memoRef(memo)
@@ -810,7 +850,10 @@
         return
       }
       var attempt = attempts[index++]
-      request(info, { path: attempt.path, method: 'PATCH', body: attempt.body }, success, function (err) {
+      request(info, { path: attempt.path, method: 'PATCH', body: attempt.body }, function (data) {
+        cacheClear(info)
+        success(data)
+      }, function (err) {
         if (err.status === 400 || err.status === 404) {
           next()
           return
@@ -833,7 +876,10 @@
         if (fail) fail({ kind: 'client', status: 400, code: null, message: 'resource id missing', hint: 'attachment' })
         return
       }
-      request(info, { path: 'resource/' + Math.floor(Number(id)), method: 'DELETE' }, success, fail)
+      request(info, { path: 'resource/' + Math.floor(Number(id)), method: 'DELETE' }, function (data) {
+        cacheClear(info)
+        success(data)
+      }, fail)
       return
     }
     var name = item && item.name ? item.name : ''
@@ -841,7 +887,10 @@
       if (fail) fail({ kind: 'client', status: 400, code: null, message: 'resource name missing', hint: 'attachment' })
       return
     }
-    request(info, { path: name, method: 'DELETE' }, success, function (err) {
+    request(info, { path: name, method: 'DELETE' }, function (data) {
+      cacheClear(info)
+      success(data)
+    }, function (err) {
       var id = item && item.id != null ? item.id : null
       if (era === ERA_UNKNOWN && id != null && (err.status === 404 || err.status === 405 || err.status === 200)) {
         request(info, { path: 'resource/' + Math.floor(Number(id)), method: 'DELETE' }, success, fail)
@@ -939,7 +988,7 @@
       success(localMatch(all, needle))
     }
     var fallbackLocal = function () {
-      listAll(info, {}, finishLocal, fail)
+      readAll(info, finishLocal, fail)
     }
 
     // Legacy REST accepts `content` directly; verify the result and fall back
@@ -987,13 +1036,13 @@
   }
 
   function listTags(info, success, fail) {
-    listAll(info, {}, function (memos) {
+    readAll(info, function (memos) {
       success(collectTags(memos))
     }, fail)
   }
 
   function listRandomMemos(info, success, fail) {
-    listAll(info, {}, function (memos) {
+    readAll(info, function (memos) {
       success(memos)
     }, fail)
   }

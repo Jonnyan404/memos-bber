@@ -49,6 +49,23 @@ jobs:
           path: tools/verify/last-run.json
           if-no-files-found: ignore
 
+  firefox-smoke:
+    name: Firefox install smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install Firefox
+        run: npx --yes @puppeteer/browsers install firefox@stable --path "$RUNNER_TEMP/ff"
+      - name: Install bundle into real Firefox (BiDi)
+        run: |
+          FIREFOX_PATH=$(find "$RUNNER_TEMP/ff" -type f -name firefox | head -1)
+          test -x "$FIREFOX_PATH"
+          FIREFOX_PATH="$FIREFOX_PATH" node tools/verify/firefox-smoke.mjs
+
   browser-ui:
     name: Popup UI (Chrome ${{ matrix.label }})
     runs-on: ubuntu-latest
@@ -63,6 +80,8 @@ jobs:
             extra: '--subpath /memos'
           - label: edge-bundle
             extra: '--extension edge'
+          - label: upload
+            extra: '--scenario upload'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
