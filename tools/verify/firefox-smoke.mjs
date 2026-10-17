@@ -36,6 +36,20 @@ if (!fs.existsSync(firefox)) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Chrome may still be flushing its profile when we kill it; retry a few times
+// instead of failing the whole check with ENOTEMPTY.
+function removeProfile(dir, attempts = 5) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+      return
+    } catch (err) {
+      if (i === attempts - 1) return
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    }
+  }
+}
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'memos-ff-smoke-'))
 const child = spawn(firefox, ['--headless', '--no-remote', `--remote-debugging-port=${PORT}`, '--profile', profile, 'about:blank'], {
   stdio: 'ignore'
@@ -47,7 +61,7 @@ const cleanup = () => {
   } catch (_) {
     /* ignore */
   }
-  fs.rmSync(profile, { recursive: true, force: true })
+  removeProfile(profile)
 }
 process.on('exit', cleanup)
 

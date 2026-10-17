@@ -82,6 +82,20 @@ function findChrome() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// Chrome may still be flushing its profile when we kill it; retry a few times
+// instead of failing the whole check with ENOTEMPTY.
+function removeProfile(dir, attempts = 5) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+      return
+    } catch (err) {
+      if (i === attempts - 1) return
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    }
+  }
+}
+
 // Serve the Memos instance under a sub-path (e.g. https://host/memos/) so the
 // extension's apiUrl-with-prefix handling is exercised, not just root deploys.
 async function startSubpathProxy(targetBase, prefix) {
@@ -279,7 +293,7 @@ async function main() {
         /* ignore */
       }
     }
-    if (!KEEP) fs.rmSync(profile, { recursive: true, force: true })
+    if (!KEEP) removeProfile(profile)
   }
   process.on('exit', cleanup)
 
