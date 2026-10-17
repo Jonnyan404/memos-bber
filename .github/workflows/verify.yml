@@ -24,7 +24,7 @@ jobs:
         run: node tools/verify/bundles.mjs
 
   api-matrix:
-    name: API matrix (${{ github.event_name == 'pull_request' && 'subset' || 'all releases' }})
+    name: API matrix (${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'all releases' || 'subset' }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -34,10 +34,10 @@ jobs:
           node-version: '22'
       - name: Run container matrix
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            node tools/verify/memos-api-matrix.mjs --only 0.15.0,0.23.1,0.26.1,0.31.0,26.10-rc.1
-          else
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             node tools/verify/memos-api-matrix.mjs
+          else
+            node tools/verify/memos-api-matrix.mjs --only 0.15.0,0.23.1,0.26.1,0.31.0,26.10-rc.1
           fi
       - name: Upload matrix report
         if: always()
