@@ -77,46 +77,102 @@ eq(
 )
 
 // ------------------------------------------------------------- background.js
-// Firefox for Android has no context menus and no `browserAction`; load the
-// event page with both a desktop and an Android-shaped chrome object and make
-// sure top-level registration never throws.
-function mockChrome({ android = false } = {}) {
-  const menus = []
-  const listeners = { installed: [], clicked: [], storage: [] }
+// The menu handlers are the part of the extension that cannot be driven from a
+// popup harness, so they run here against a chrome mock: a real listener, real
+// dispatch, and the storage write inspected afterwards.
+function createChromeMock(options = {}) {
+  const state = {
+    menus: [],
+    badges: [],
+    openedPopups: 0,
+    tabs: [],
+    setCalls: [],
+    selectionTargets: [],
+    storage: Object.assign({}, options.storage || {}),
+    listeners: { installed: [], clicked: [], storage: [], command: [], startup: [] },
+    popupFails: Boolean(options.popupFails),
+    selection: options.selection || '',
+    withMenus: options.withMenus !== false,
+    withCommands: options.withCommands !== false
+  }
+
   const chrome = {
     runtime: {
       id: 'memos-bber@test',
       getURL: (p) => 'moz-extension://test/' + p,
       lastError: undefined,
-      onInstalled: { addListener: (fn) => listeners.installed.push(fn) }
+      onInstalled: { addListener: (fn) => state.listeners.installed.push(fn) },
+      onStartup: { addListener: (fn) => state.listeners.startup.push(fn) }
     },
     storage: {
       sync: {
-        get: (defaults, cb) => cb(defaults),
-        set: (items, cb) => cb && cb()
+        get: (defaults, cb) => {
+          const out = Object.assign({}, defaults)
+          for (const key of Object.keys(defaults)) {
+            if (state.storage[key] !== undefined) out[key] = state.storage[key]
+          }
+          cb(out)
+        },
+        set: (items, cb) => {
+          state.setCalls.push(items)
+          Object.assign(state.storage, items)
+          if (cb) cb()
+        }
       },
-      onChanged: { addListener: (fn) => listeners.storage.push(fn) }
+      onChanged: { addListener: (fn) => state.listeners.storage.push(fn) }
     },
-    i18n: { getMessage: (k) => k },
-    action: { openPopup: () => {} },
-    tabs: { create: () => {} },
-    scripting: { executeScript: () => {} }
-  }
-  if (!android) {
-    chrome.contextMenus = {
-      create: (opts, cb) => {
-        menus.push(opts)
-        cb && cb()
+    i18n: { getMessage: (key) => 'i18n:' + key },
+    action: {
+      openPopup: (options, cb) => {
+        if (state.popupFails) {
+          chrome.runtime.lastError = { message: 'no gesture' }
+          if (cb) cb()
+          chrome.runtime.lastError = undefined
+          return
+        }
+        state.openedPopups++
+        if (cb) cb()
       },
-      update: (id, update, cb) => cb && cb(),
-      onClicked: { addListener: (fn) => listeners.clicked.push(fn) }
+      setBadgeText: (options) => state.badges.push(options.text),
+      setBadgeBackgroundColor: () => {}
+    },
+    tabs: { create: (options) => state.tabs.push(options) },
+    scripting: {
+      executeScript: (injection, cb) => {
+        state.selectionTargets.push(injection.target)
+        cb([{ result: state.selection }])
+      }
     }
   }
-  return { chrome, menus, listeners }
+
+  if (state.withMenus) {
+    chrome.contextMenus = {
+      removeAll: (cb) => {
+        state.menus = []
+        if (cb) cb()
+      },
+      create: (options, cb) => {
+        state.menus.push(options)
+        if (cb) cb()
+      },
+      update: (id, update, cb) => {
+        const menu = state.menus.find((m) => m.id === id)
+        if (menu) menu.title = update.title
+        if (cb) cb()
+      },
+      onClicked: { addListener: (fn) => state.listeners.clicked.push(fn) }
+    }
+  }
+
+  if (state.withCommands) {
+    chrome.commands = { onCommand: { addListener: (fn) => state.listeners.command.push(fn) } }
+  }
+
+  return { chrome, state }
 }
 
-function loadBackground(opts) {
-  const mock = mockChrome(opts)
+function loadBackground(options) {
+  const mock = createChromeMock(options)
   const sandbox = {
     chrome: mock.chrome,
     console,
@@ -132,6 +188,8 @@ function loadBackground(opts) {
   return mock
 }
 
+const flush = () => new Promise((resolve) => setTimeout(resolve, 20))
+
 function quiet(fn) {
   try {
     fn()
@@ -141,22 +199,99 @@ function quiet(fn) {
   }
 }
 
-const desktop = loadBackground()
-eq('bg desktop registers onInstalled', desktop.listeners.installed.length, 1)
-eq('bg desktop registers context menu clicks', desktop.listeners.clicked.length, 1)
-eq('bg desktop registers storage listener', desktop.listeners.storage.length, 1)
-eq('bg desktop onInstalled throw', quiet(() => desktop.listeners.installed[0]()), null)
-eq(
-  'bg desktop creates three menus',
-  desktop.menus.map((m) => m.id),
-  ['Memos-send-selection', 'Memos-send-link', 'Memos-send-image']
-)
-eq('bg desktop selection menu contexts', desktop.menus[0].contexts, ['selection'])
+async function click(mock, info, tab = { id: 1, windowId: 1 }) {
+  mock.state.listeners.clicked[0](info, tab)
+  await flush()
+  return mock.state
+}
 
-const android = loadBackground({ android: true })
-eq('bg android registers onInstalled', android.listeners.installed.length, 1)
-eq('bg android onInstalled throw', quiet(() => android.listeners.installed[0]()), null)
-eq('bg android creates no menus', android.menus.length, 0)
+const desktop = loadBackground()
+eq('bg desktop registers onInstalled', desktop.state.listeners.installed.length, 1)
+eq('bg desktop registers context menu clicks', desktop.state.listeners.clicked.length, 1)
+eq('bg desktop registers command listener', desktop.state.listeners.command.length, 1)
+eq('bg desktop onInstalled throw', quiet(() => desktop.state.listeners.installed[0]()), null)
+await flush()
+eq(
+  'bg desktop creates four menus',
+  desktop.state.menus.map((m) => m.id),
+  ['Memos-send-selection', 'Memos-send-link', 'Memos-send-page', 'Memos-send-image']
+)
+eq('bg selection menu contexts', desktop.state.menus[0].contexts, ['selection'])
+eq('bg page and link are separate items', [desktop.state.menus[1].contexts, desktop.state.menus[2].contexts], [['link'], ['page']])
+
+// page: appends the URL, acknowledges with a badge and opens the popup
+{
+  const mock = loadBackground()
+  mock.state.listeners.installed[0]()
+  await flush()
+  const state = await click(mock, { menuItemId: 'Memos-send-page', pageUrl: 'https://example.com/a?b=1' })
+  eq('bg page appends url', state.storage.open_content, 'https://example.com/a?b=1\n')
+  eq('bg page opens popup', state.openedPopups, 1)
+  eq('bg page badge', state.badges.filter(Boolean), ['✓'])
+}
+
+// link: a URL with parentheses must stay intact
+{
+  const mock = loadBackground()
+  const state = await click(mock, { menuItemId: 'Memos-send-link', linkUrl: 'https://wiki.test/Foo_(bar)' })
+  eq('bg link keeps parentheses', state.storage.open_content, 'https://wiki.test/Foo_(bar)\n')
+}
+
+// selection: CRLF normalised, reference link appended with angle brackets
+{
+  const mock = loadBackground({ selection: 'line1\r\nline2\r\n', storage: { open_content: 'existing' } })
+  const state = await click(mock, { menuItemId: 'Memos-send-selection', pageUrl: 'https://wiki.test/Foo_(bar)', frameId: 3 })
+  eq(
+    'bg selection block',
+    state.storage.open_content,
+    'existing\n\nline1\nline2\n\n[Reference Link](<https://wiki.test/Foo_(bar)>)\n'
+  )
+  eq('bg selection uses the clicked frame', state.selectionTargets[0].frameIds, [3])
+}
+
+// image: markdown image with an angle-bracket destination when needed
+{
+  const mock = loadBackground()
+  const state = await click(mock, { menuItemId: 'Memos-send-image', srcUrl: 'https://img.test/a_(1).png' })
+  eq('bg image markdown', state.storage.open_content, '![](<https://img.test/a_(1).png>)\n')
+}
+
+// mid-upload clicks must not race the uploader
+{
+  const mock = loadBackground({ storage: { open_action: 'upload_image', open_content: 'draft' } })
+  const state = await click(mock, { menuItemId: 'Memos-send-link', linkUrl: 'https://x.test/' })
+  eq('bg upload guard keeps storage', state.setCalls.length, 0)
+  eq('bg upload guard badge', state.badges.filter(Boolean), ['!'])
+  eq('bg upload guard no popup', state.openedPopups, 0)
+}
+
+// unknown menu id is ignored
+{
+  const mock = loadBackground()
+  const state = await click(mock, { menuItemId: 'something-else' })
+  eq('bg unknown id ignored', state.setCalls.length, 0)
+}
+
+// keyboard command opens the popup; falls back to the full-tab editor
+{
+  const mock = loadBackground()
+  mock.state.listeners.command[0]('open-extension')
+  await flush()
+  eq('bg command opens popup', mock.state.openedPopups, 1)
+
+  const failing = loadBackground({ popupFails: true })
+  failing.state.listeners.command[0]('open-extension')
+  await flush()
+  eq('bg command falls back to a tab', failing.state.tabs.map((t) => t.url), ['moz-extension://test/popup.html?mode=full'])
+}
+
+// Android: no context menus, no commands
+{
+  const mock = loadBackground({ withMenus: false, withCommands: false })
+  eq('bg android onInstalled throw', quiet(() => mock.state.listeners.installed[0]()), null)
+  eq('bg android creates no menus', mock.state.menus.length, 0)
+  eq('bg android no click listener', mock.state.listeners.clicked.length, 0)
+}
 
 console.log(`\n${failures === 0 ? 'all unit checks passed' : failures + ' unit checks failed'}`)
 process.exit(failures === 0 ? 0 : 1)

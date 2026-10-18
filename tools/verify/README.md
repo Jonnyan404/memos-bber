@@ -174,7 +174,44 @@ node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" -
 跳过并提示，拖入时给编辑区加 `drop-active` 虚线高亮（原来是把整页 opacity 降到 0.3），
 上传成功不再清空草稿。
 
-## 9. 可见性策略（禁止公开备忘录）
+## 9. 右键菜单与快捷键
+
+四个菜单项由一张 `MENUS` 描述表驱动（创建、改标题、点击分发都读它），菜单 id 保持稳定：
+
+| id | 上下文 | 行为 |
+|---|---|---|
+| `Memos-send-selection` | selection | 选中文本（注入到 `info.frameId`，iframe 里也有效）+ `[Reference Link](<url>)` |
+| `Memos-send-link` | link | 链接 URL 原文 |
+| `Memos-send-page` | page | 当前页 URL |
+| `Memos-send-image` | image | `![](<src>)` |
+
+要点：
+
+- **每次 `onInstalled` 都 `removeAll` 后重建**（不是 `create`）：升级时改名/删项不会残留旧条目，
+  也不会撞 “duplicate id”；`create/update` 都带回调吞掉 `lastError`。
+- **点击一定有反馈**：先给工具栏徽标打 `✓`（`.setBadgeText`），再尝试打开弹窗；弹窗打开时
+  自己清空徽标（事件页不能靠 `setTimeout` 保持状态）。上传进行中或弹窗打不开 → 打 `!`。
+- **不再用 `alert()`**：MV3 的 service worker / 事件页没有 UI，旧代码在“上传中点击菜单”时会抛错。
+- **文本拼接**：CRLF→LF、行尾空格清理、与已有草稿用空行分隔；URL 含 `)` 或空格时用 `<...>`
+  包住（`Foo_(bar)` 这类维基链接否则会被 Markdown 截断）。
+- **`Ctrl+Shift+F` 真的能用**：`commands.onCommand` → `action.openPopup`，不支持时回退打开
+  全屏页标签（之前 manifest 声明了命令但没有任何监听器）。
+- Firefox for Android 没有上下文菜单：`contextMenus` 缺失时整体跳过，不抛错。
+
+验证分两层：
+
+```bash
+# 逻辑层：vm + chrome mock，逐项断言写进 storage 的内容、徽标、iframe、上传态、命令回退
+node tools/verify/unit.mjs
+
+# 真实层：连上 Chrome 的 service worker，用“重复 id 必然报错”反证四个菜单真的注册了
+node tools/verify/background-live.mjs
+```
+
+`background-live.mjs` 还会在真实 SW 里调用一次 `handleMenuClick`，断言 `chrome.storage`
+里的草稿确实被写成 `https://live.test/a?b=1\n`，并检查全程没有 `Runtime.exceptionThrown`。
+
+## 10. 可见性策略（禁止公开备忘录）
 
 Memos 0.15–0.26 有 `disallowPublicVisibility`（0.27 起移除）。适配层用
 `GET instance/settings/MEMO_RELATED` 读取它（普通用户令牌也能读），结果存进
@@ -191,7 +228,7 @@ node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15402/ --token "$TOKEN" -
 矩阵里的 `visibilityPolicy` 项对每个版本做双向断言：服务端真能收 PUBLIC 时适配层不得说
 「被禁」，服务端 403 时必须说「被禁」。矩阵端口可用 `MATRIX_PORT` 覆盖（默认 15400）。
 
-## 10. 纯函数单测
+## 11. 纯函数单测
 
 `node tools/verify/unit.mjs` 覆盖 `parseVersion / eraOfVersion / memoRef / errorInfo / extractTags / normalizeResource`，
 不需要 Docker，CI 的 bundle job 会跑。

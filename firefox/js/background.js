@@ -2,6 +2,20 @@ const UI_LANGUAGE_STORAGE_KEY = 'uiLanguage'
 
 const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko'])
 
+// One descriptor list drives creation, title refresh and click dispatch, so the
+// three can never drift apart again.
+const MENUS = [
+  { id: 'Memos-send-selection', key: 'sendTo', contexts: ['selection'] },
+  { id: 'Memos-send-link', key: 'sendLinkTo', contexts: ['link'] },
+  { id: 'Memos-send-page', key: 'sendPageTo', contexts: ['page'] },
+  { id: 'Memos-send-image', key: 'sendImageTo', contexts: ['image'] }
+]
+
+const BADGE_OK = '✓'
+const BADGE_ERROR = '!'
+const BADGE_OK_COLOR = '#16a34a'
+const BADGE_ERROR_COLOR = '#dc2626'
+
 function normalizeUiLanguage(value) {
   const lang = String(value || 'auto')
   return SUPPORTED_UI_LANGUAGES.has(lang) ? lang : 'auto'
@@ -13,14 +27,36 @@ function storageSyncGet(defaults) {
   })
 }
 
-function updateContextMenu(id, update) {
-  return new Promise((resolve) => {
-    try {
-      chrome.contextMenus.update(id, update, () => resolve())
-    } catch (_) {
-      resolve()
+// MV3 exposes `action`; MV2 exposed `browserAction`. Keeping both means one
+// file works in either manifest, and the fallback is harmless in Chrome.
+function actionApi() {
+  if (chrome.action) return chrome.action
+  if (chrome.browserAction) return chrome.browserAction
+  return null
+}
+
+function hasContextMenus() {
+  return Boolean(chrome.contextMenus && typeof chrome.contextMenus.create === 'function')
+}
+
+// A context-menu click has to be acknowledged: the popup may refuse to open
+// (inactive window, Firefox for Android), and silently appending text looks
+// like nothing happened.
+function setBadge(text, color) {
+  const api = actionApi()
+  if (!api || typeof api.setBadgeText !== 'function') return
+  try {
+    if (color && typeof api.setBadgeBackgroundColor === 'function') {
+      api.setBadgeBackgroundColor({ color: color })
     }
-  })
+    api.setBadgeText({ text: text || '' })
+  } catch (_) {
+    // best-effort only
+  }
+}
+
+function clearBadge() {
+  setBadge('')
 }
 
 function pageReadSelectionText() {
@@ -44,66 +80,59 @@ function pageReadSelectionText() {
   }
 }
 
-function getSelectionTextFromTab(tabId, fallbackText) {
+// `frameId` matters: a selection inside an iframe is invisible to the main
+// frame, so injecting into `info.frameId` is what makes that case work.
+function getSelectionTextFromTab(tab, frameId, fallbackText) {
   return new Promise((resolve) => {
     const fallback = typeof fallbackText === 'string' ? fallbackText : ''
-    if (!tabId) {
+    const tabId = tab && tab.id
+    if (!tabId || !chrome.scripting || typeof chrome.scripting.executeScript !== 'function') {
       resolve(fallback)
       return
     }
 
-    if (chrome.scripting && typeof chrome.scripting.executeScript === 'function') {
-      try {
-        chrome.scripting.executeScript(
-          {
-            target: { tabId },
-            func: pageReadSelectionText
-          },
-          (results) => {
-            if (chrome.runtime.lastError) {
-              resolve(fallback)
-              return
-            }
-            const first = Array.isArray(results) ? results[0] : null
-            const text = first && typeof first.result === 'string' ? first.result : ''
-            resolve(text || fallback)
-          }
-        )
-        return
-      } catch (_) {
-        // Fallback below for Firefox MV2 background pages.
-      }
-    }
+    const target = { tabId: tabId }
+    if (typeof frameId === 'number' && frameId >= 0) target.frameIds = [frameId]
 
-    // No `tabs.executeScript` fallback: MV3 removed it, and `scripting` is a
-    // declared permission, so only an outdated build would reach this line.
-    resolve(fallback)
+    try {
+      chrome.scripting.executeScript({ target: target, func: pageReadSelectionText }, (results) => {
+        if (chrome.runtime.lastError) {
+          resolve(fallback)
+          return
+        }
+        const first = Array.isArray(results) ? results[0] : null
+        const text = first && typeof first.result === 'string' ? first.result : ''
+        resolve(text || fallback)
+      })
+    } catch (_) {
+      resolve(fallback)
+    }
   })
 }
 
-function actionApi() {
-  // MV3 exposes `action`; MV2 exposed `browserAction`. Keep both so the same
-  // file still works if it is dropped into an older Firefox build.
-  return (chrome.action && typeof chrome.action.openPopup === 'function')
-    ? chrome.action
-    : (chrome.browserAction && typeof chrome.browserAction.openPopup === 'function' ? chrome.browserAction : null)
-}
+function tryOpenActionPopup(tab, onFail) {
+  const api = actionApi()
+  const fail = () => {
+    if (typeof onFail === 'function') onFail()
+  }
+  if (!api || typeof api.openPopup !== 'function') {
+    fail()
+    return
+  }
 
-function tryOpenActionPopup(tab) {
   try {
-    const api = actionApi()
-    if (!api) return
     const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : undefined
 
     const open = () => {
       try {
-        if (typeof windowId === 'number') {
-          api.openPopup({ windowId }, () => void chrome.runtime.lastError)
-        } else {
-          api.openPopup({}, () => void chrome.runtime.lastError)
-        }
+        const options = typeof windowId === 'number' ? { windowId: windowId } : {}
+        api.openPopup(options, () => {
+          // lastError is only populated in the callback form; a throw is
+          // caught below and treated the same way.
+          if (chrome.runtime.lastError) fail()
+        })
       } catch (_) {
-        // best-effort only
+        fail()
       }
     }
 
@@ -118,9 +147,44 @@ function tryOpenActionPopup(tab) {
 
     open()
   } catch (_) {
-    // best-effort only
+    fail()
   }
 }
+
+// ------------------------------------------------------------------ text glue
+
+function normalizeBlock(text) {
+  return String(text == null ? '' : text)
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .trim()
+}
+
+// CommonMark allows `<...>` destinations, which is the only way a URL with
+// parentheses (very common on wikis) survives as a link.
+function markdownLink(label, url) {
+  const href = normalizeBlock(url)
+  if (!href) return ''
+  const destination = /[)\s]/.test(href) ? '<' + href + '>' : href
+  return '[' + label + '](' + destination + ')'
+}
+
+function markdownImage(url) {
+  const src = normalizeBlock(url)
+  if (!src) return ''
+  const destination = /[)\s]/.test(src) ? '<' + src + '>' : src
+  return '![](' + destination + ')'
+}
+
+function joinDraft(existing, block) {
+  const body = normalizeBlock(block)
+  if (!body) return String(existing == null ? '' : existing)
+  const head = String(existing == null ? '' : existing).replace(/\s+$/, '')
+  if (!head) return body + '\n'
+  return head + '\n\n' + body + '\n'
+}
+
+// --------------------------------------------------------------------- menus
 
 let cachedUiLanguage = null
 let cachedOverrideMessages = null
@@ -154,100 +218,142 @@ async function t(key) {
   return chrome.i18n.getMessage(key) || ''
 }
 
-async function refreshContextMenus() {
-  await updateContextMenu('Memos-send-selection', { title: await t('sendTo') })
-  await updateContextMenu('Memos-send-link', { title: await t('sendLinkTo') })
-  await updateContextMenu('Memos-send-image', { title: await t('sendImageTo') })
+function updateMenuTitle(id, title) {
+  if (!hasContextMenus()) return Promise.resolve()
+  return new Promise((resolve) => {
+    try {
+      chrome.contextMenus.update(id, { title: title }, () => {
+        void chrome.runtime.lastError
+        resolve()
+      })
+    } catch (_) {
+      resolve()
+    }
+  })
 }
 
-// Firefox for Android has no context menu surface for extensions; the API may
-// be missing or throw, and that must not break the rest of onInstalled.
-function createContextMenu(options) {
-  try {
-    if (!chrome.contextMenus || typeof chrome.contextMenus.create !== 'function') return
-    chrome.contextMenus.create(options, () => void chrome.runtime.lastError)
-  } catch (_) {
-    // best-effort: desktop-only feature
+// Titles follow the in-extension language override, which `i18n.getMessage`
+// alone cannot do.
+async function refreshMenuTitles() {
+  for (const menu of MENUS) {
+    await updateMenuTitle(menu.id, await t(menu.key))
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  createContextMenu({
-    type: 'normal',
-    title: chrome.i18n.getMessage('sendTo'),
-    id: 'Memos-send-selection',
-    contexts: ['selection']
-  })
-  createContextMenu({
-    type: 'normal',
-    title: chrome.i18n.getMessage('sendLinkTo'),
-    id: 'Memos-send-link',
-    contexts: ['link', 'page']
-  })
-  createContextMenu({
-    type: 'normal',
-    title: chrome.i18n.getMessage('sendImageTo'),
-    id: 'Memos-send-image',
-    contexts: ['image']
-  })
+// Rebuild instead of create-on-top: an update that renames or drops an item
+// would otherwise leave the old entry behind, and `create` with a duplicate id
+// fails silently.
+function buildMenus() {
+  if (!hasContextMenus()) return
+  try {
+    chrome.contextMenus.removeAll(() => {
+      void chrome.runtime.lastError
+      for (const menu of MENUS) {
+        try {
+          chrome.contextMenus.create(
+            {
+              id: menu.id,
+              type: 'normal',
+              title: chrome.i18n.getMessage(menu.key) || menu.key,
+              contexts: menu.contexts
+            },
+            () => void chrome.runtime.lastError
+          )
+        } catch (_) {
+          // best-effort: a single bad item must not abort the rest
+        }
+      }
+      refreshMenuTitles()
+    })
+  } catch (_) {
+    // Context menus are unavailable on Firefox for Android.
+  }
+}
 
-  // Apply override titles if user selected a fixed language.
-  refreshContextMenus()
+function openEditorFromCommand() {
+  // Chrome only allows openPopup from a user gesture (a command qualifies); if
+  // the API is missing or refuses, fall back to the full-tab editor.
+  tryOpenActionPopup(null, () => {
+    try {
+      chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?mode=full') })
+    } catch (_) {
+      // best-effort only
+    }
+  })
+}
+
+// -------------------------------------------------------------------- events
+
+chrome.runtime.onInstalled.addListener(() => {
+  buildMenus()
 })
+
+// Menus survive restarts; the titles may not match a language switched in the
+// meantime, so refresh (cheap) without rebuilding.
+if (chrome.runtime.onStartup) {
+  chrome.runtime.onStartup.addListener(() => {
+    refreshMenuTitles()
+  })
+}
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'sync') return
   if (!changes[UI_LANGUAGE_STORAGE_KEY]) return
   cachedUiLanguage = null
   cachedOverrideMessages = null
-  refreshContextMenus()
+  refreshMenuTitles()
 })
 
-function onContextMenuClicked(info, tab) {
-  const appendContent = (tempCont, { openPopup } = { openPopup: false }) => {
-    chrome.storage.sync.get({ open_action: 'save_text', open_content: '' }, function (items) {
-      if (items.open_action === 'upload_image') {
-        // No alert() in an event page: surface the pending upload by opening
-        // the popup, which already shows the upload progress and the notice.
-        if (openPopup) tryOpenActionPopup(tab)
-        return
-      }
-
-      chrome.storage.sync.set(
-        {
-          open_action: 'save_text',
-          open_content: items.open_content + tempCont
-        },
-        function () {
-          if (openPopup) tryOpenActionPopup(tab)
-        }
-      )
-    })
-  }
-
-  if (info.menuItemId === 'Memos-send-selection') {
-    const ref = info.linkUrl || info.pageUrl
-    const tabId = tab && tab.id
-
-    getSelectionTextFromTab(tabId, info.selectionText).then((selectionText) => {
-      const tempCont = selectionText + '\n' + `[Reference Link](${ref})` + '\n'
-      appendContent(tempCont, { openPopup: true })
-    })
-    return
-  }
-
-  if (info.menuItemId === 'Memos-send-link') {
-    appendContent((info.linkUrl || info.pageUrl) + '\n')
-    return
-  }
-
-  if (info.menuItemId === 'Memos-send-image') {
-    appendContent(`![](${info.srcUrl})` + '\n')
-  }
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener((command) => {
+    if (command === 'open-extension') openEditorFromCommand()
+  })
 }
 
-// Desktop only: Firefox for Android does not expose context menus, and the API
-// object itself may be missing, so registering must stay optional.
-if (chrome.contextMenus && chrome.contextMenus.onClicked && typeof chrome.contextMenus.onClicked.addListener === 'function') {
-  chrome.contextMenus.onClicked.addListener(onContextMenuClicked)
+async function handleMenuClick(info, tab) {
+  if (!info || !MENUS.some((menu) => menu.id === info.menuItemId)) return
+  clearBadge()
+
+  let block = ''
+  if (info.menuItemId === 'Memos-send-selection') {
+    const selection = await getSelectionTextFromTab(tab, info.frameId, info.selectionText)
+    const reference = markdownLink('Reference Link', info.linkUrl || info.pageUrl)
+    block = [normalizeBlock(selection), reference].filter(Boolean).join('\n\n')
+  } else if (info.menuItemId === 'Memos-send-link') {
+    block = normalizeBlock(info.linkUrl)
+  } else if (info.menuItemId === 'Memos-send-page') {
+    block = normalizeBlock(info.pageUrl)
+  } else if (info.menuItemId === 'Memos-send-image') {
+    block = markdownImage(info.srcUrl)
+  }
+
+  if (!block) {
+    setBadge(BADGE_ERROR, BADGE_ERROR_COLOR)
+    return
+  }
+
+  const items = await storageSyncGet({ open_action: 'save_text', open_content: '' })
+  if (items.open_action === 'upload_image') {
+    // An upload is mid-flight and will rewrite open_content when it finishes;
+    // appending now would be overwritten (or overwrite the uploader's state).
+    setBadge(BADGE_ERROR, BADGE_ERROR_COLOR)
+    return
+  }
+
+  const next = joinDraft(items.open_content, block)
+  await new Promise((resolve) => {
+    chrome.storage.sync.set({ open_action: 'save_text', open_content: next }, () => {
+      void chrome.runtime.lastError
+      resolve()
+    })
+  })
+
+  setBadge(BADGE_OK, BADGE_OK_COLOR)
+  tryOpenActionPopup(tab)
+}
+
+if (hasContextMenus()) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    handleMenuClick(info, tab)
+  })
 }

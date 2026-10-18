@@ -382,6 +382,17 @@ if (isFullscreenMode()) {
   document.body.classList.add('fullscreen')
 }
 
+// The background flags a context-menu click with a badge. Opening the editor is
+// the acknowledgement, so clear it here instead of relying on a timer that an
+// event page cannot keep alive.
+try {
+  if (chrome.action && typeof chrome.action.setBadgeText === 'function') {
+    chrome.action.setBadgeText({ text: '' })
+  }
+} catch (_) {
+  // best-effort only
+}
+
 window.addEventListener('i18n:changed', (ev) => {
   applyDayjsLocaleByUiLanguage(ev && ev.detail ? ev.detail.lang : 'auto')
   updateLockNowText(currentMemoLock)

@@ -232,5 +232,8 @@
   },
   "picDropSkipped": {
     "message": "Se omitieron algunos elementos (las carpetas no se pueden subir)"
+  },
+  "sendPageTo": {
+    "message": "Enviar esta página a Memos"
   }
 }

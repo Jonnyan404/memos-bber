@@ -232,5 +232,8 @@
   },
   "picDropSkipped": {
     "message": "一部の項目はスキップされました（フォルダはアップロードできません）"
+  },
+  "sendPageTo": {
+    "message": "このページを Memos に送る"
   }
 }

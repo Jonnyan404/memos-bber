@@ -134,6 +134,18 @@ for (const bundle of BUNDLES) {
     'editor supports keyboard resize',
     oper.includes("handle.addEventListener('keydown', onKeyDown)") && oper.includes("'ArrowRight'")
   )
+  const bg = exists(path.join(dir, 'js/background.js')) ? read(path.join(dir, 'js/background.js')) : ''
+  check(
+    bundle,
+    'context menus rebuilt with guards',
+    bg.includes('removeAll') && bg.includes('hasContextMenus()') && bg.includes('Memos-send-page')
+  )
+  check(bundle, 'menu click acknowledged by badge', bg.includes('setBadgeText') && bg.includes('BADGE_OK'))
+  check(
+    bundle,
+    'keyboard command wired',
+    bg.includes('chrome.commands.onCommand.addListener') && bg.includes('openEditorFromCommand')
+  )
   check(
     bundle,
     'drop uploads every file',
@@ -162,7 +174,8 @@ for (const bundle of BUNDLES) {
         'errAuth',
         'serverVersionLabel',
         'lockPublicBlocked',
-        'picDropUnsupported'
+        'picDropUnsupported',
+        'sendPageTo'
       ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))
@@ -193,7 +206,7 @@ check('shared', 'adapter identical in all bundles', unique.size === 1, adapterHa
 
 // The popup is one implementation shared by all three bundles now that the
 // Firefox-only drag preview was folded into the common resize code.
-const popupFiles = ['js/oper.js', 'popup.html', 'css/main.css']
+const popupFiles = ['js/oper.js', 'js/background.js', 'popup.html', 'css/main.css']
 for (const file of popupFiles) {
   const hashes = BUNDLES.map((b) => [b, hash(path.join(ROOT, b, file))])
   check(

@@ -85,6 +85,24 @@ jobs:
           CHROME_PATH="$CHROME" node tools/verify/chrome-ui.mjs \
             --url http://127.0.0.1:15402/ --token "$MEMOS_TOKEN" --scenario locked-public
 
+  background:
+    name: Context menus and command (live service worker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install Chrome for Testing
+        run: |
+          npx --yes @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/chrome"
+          CHROME_PATH=$(find "$RUNNER_TEMP/chrome" -type f -name chrome | head -1)
+          test -x "$CHROME_PATH"
+          echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+      - name: Attach to the real service worker
+        run: node tools/verify/background-live.mjs
+
   firefox-smoke:
     name: Firefox install smoke
     runs-on: ubuntu-latest

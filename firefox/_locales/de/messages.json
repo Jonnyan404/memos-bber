@@ -232,5 +232,8 @@
   },
   "picDropSkipped": {
     "message": "Einige Elemente wurden übersprungen (Ordner können nicht hochgeladen werden)"
+  },
+  "sendPageTo": {
+    "message": "Diese Seite an Memos senden"
   }
 }

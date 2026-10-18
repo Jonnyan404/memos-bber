@@ -232,5 +232,8 @@
   },
   "picDropSkipped": {
     "message": "Certains éléments ont été ignorés (les dossiers ne peuvent pas être envoyés)"
+  },
+  "sendPageTo": {
+    "message": "Envoyer cette page à Memos"
   }
 }
