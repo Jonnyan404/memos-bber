@@ -378,7 +378,7 @@ async function runVersion(version) {
     // Pagination: create a few more memos and walk them with a tiny page size.
     const marks = [stamp]
     for (let i = 2; i <= 4; i++) {
-      const extra = await callWith((ok, bad) =>
+      await callWith((ok, bad) =>
         api.createMemo({ content: `${stamp}-p${i}`, visibility: 'PRIVATE', resourceIdList: [] }, ok, bad)
       )
       marks.push(`${stamp}-p${i}`)
@@ -414,7 +414,11 @@ async function runVersion(version) {
     const archived = await callWith((ok, bad) => api.archiveMemo(created, ok, bad))
     const fetchedArchived = await callWith((ok, bad) => api.getMemo(ref, ok, bad))
     const state = fetchedArchived ? String(fetchedArchived.state || fetchedArchived.rowStatus || '') : ''
-    report.checks.push({ name: 'archiveMemo', ok: /ARCHIVED/i.test(state), detail: state || 'unknown' })
+    report.checks.push({
+      name: 'archiveMemo',
+      ok: Boolean(archived) && /ARCHIVED/i.test(state),
+      detail: state || 'unknown'
+    })
 
     if (uploaded) {
       await callWith((ok, bad) => api.deleteResource(uploaded, ok, bad))

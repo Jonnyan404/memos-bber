@@ -89,6 +89,7 @@ function createChromeMock(options = {}) {
     setCalls: [],
     selectionTargets: [],
     storage: Object.assign({}, options.storage || {}),
+    session: Object.assign({}, options.session || {}),
     listeners: { installed: [], clicked: [], storage: [], command: [], startup: [] },
     popupFails: Boolean(options.popupFails),
     selection: options.selection || '',
@@ -119,7 +120,14 @@ function createChromeMock(options = {}) {
           if (cb) cb()
         }
       },
-      onChanged: { addListener: (fn) => state.listeners.storage.push(fn) }
+      onChanged: { addListener: (fn) => state.listeners.storage.push(fn) },
+      session: {
+        get: (defaults, cb) => cb(Object.assign({}, defaults, state.session)),
+        set: (items, cb) => {
+          Object.assign(state.session, items)
+          if (cb) cb()
+        }
+      }
     },
     i18n: { getMessage: (key) => 'i18n:' + key },
     action: {
@@ -256,9 +264,9 @@ eq('bg page and link are separate items', [desktop.state.menus[1].contexts, desk
   eq('bg image markdown', state.storage.open_content, '![](<https://img.test/a_(1).png>)\n')
 }
 
-// mid-upload clicks must not race the uploader
+// mid-upload clicks must not race the uploader (session flag, not sync state)
 {
-  const mock = loadBackground({ storage: { open_action: 'upload_image', open_content: 'draft' } })
+  const mock = loadBackground({ storage: { open_content: 'draft' }, session: { uploading: true } })
   const state = await click(mock, { menuItemId: 'Memos-send-link', linkUrl: 'https://x.test/' })
   eq('bg upload guard keeps storage', state.setCalls.length, 0)
   eq('bg upload guard badge', state.badges.filter(Boolean), ['!'])

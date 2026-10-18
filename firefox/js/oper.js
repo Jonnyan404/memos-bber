@@ -1,4 +1,8 @@
-dayjs.extend(window.dayjs_plugin_relativeTime)
+// A missing plugin file must not brick the popup: the card timestamp falls back
+// to an absolute date below.
+if (window.dayjs_plugin_relativeTime) {
+  dayjs.extend(window.dayjs_plugin_relativeTime)
+}
 let currentMemoLock = ''
 
 function isFullscreenMode() {
@@ -23,7 +27,7 @@ function openFullscreenTab() {
 // to keep the ratio); during the drag only a CSS transform is applied, because
 // resizing the real popup on every pointermove makes Chrome jitter. The real
 // size is committed on release and persisted.
-function initProportionalEditorResize() {
+function initEditorResize() {
   try {
     if (isFullscreenMode()) return
 
@@ -340,12 +344,122 @@ function initFullscreenColumnResize() {
   window.addEventListener('resize', computeMax)
 }
 
+// Icons live in <template> elements (popup.html) and are cloned, so the code
+// never assigns innerHTML — the AMO validator flags every such assignment.
+function cloneIcon(id) {
+  const template = document.getElementById(id)
+  return template && template.content ? template.content.cloneNode(true) : document.createTextNode('')
+}
+
+// Memo content is untrusted (it can come from other users on a shared
+// instance). It is rendered as text plus real links/images instead of being
+// pasted into innerHTML, which is what used to allow markup injection.
+function renderMemoContent(text) {
+  const fragment = document.createDocumentFragment()
+  const source = String(text == null ? '' : text)
+  const pattern = /!\[[^\]]*\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)/g
+  let processed = 0
+  let match = pattern.exec(source)
+  while (match) {
+    if (match.index > processed) {
+      fragment.appendChild(document.createTextNode(source.slice(processed, match.index)))
+    }
+    fragment.appendChild(document.createTextNode(' '))
+    if (match[1]) {
+      const image = document.createElement('img')
+      image.className = 'random-image'
+      image.src = match[1]
+      fragment.appendChild(image)
+    } else {
+      const link = document.createElement('a')
+      link.href = match[3]
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = match[2]
+      fragment.appendChild(link)
+    }
+    fragment.appendChild(document.createTextNode(' '))
+    processed = pattern.lastIndex
+    match = pattern.exec(source)
+  }
+  if (processed < source.length) {
+    fragment.appendChild(document.createTextNode(source.slice(processed)))
+  }
+  return fragment
+}
+
+// One card builder shared by search and random. It also gives each card its own
+// buttons: the old markup repeated `id="random-link"` per card, so every button
+// acted on the first memo.
+function createMemoCard(memo, info, adapter) {
+  const card = document.createElement('div')
+  card.className = 'random-item'
+
+  const header = document.createElement('div')
+  header.className = 'random-time'
+
+  const uid = getMemoUid(memo)
+  const openButton = document.createElement('span')
+  openButton.className = 'random-link'
+  openButton.dataset.uid = uid
+  openButton.appendChild(cloneIcon('iconOpen'))
+  header.appendChild(openButton)
+
+  const deleteButton = document.createElement('span')
+  deleteButton.className = 'random-delete'
+  deleteButton.dataset.uid = uid
+  deleteButton.dataset.name = memo && memo.name ? memo.name : ''
+  if (memo && memo.id != null) deleteButton.dataset.id = String(memo.id)
+  deleteButton.appendChild(cloneIcon('iconDelete'))
+  header.appendChild(deleteButton)
+
+  header.appendChild(document.createTextNode(memoFromNow(memo)))
+  card.appendChild(header)
+
+  const content = document.createElement('div')
+  content.className = 'random-content'
+  content.appendChild(renderMemoContent(memo && memo.content ? memo.content : ''))
+  card.appendChild(content)
+
+  const attachments =
+    memo && Array.isArray(memo.attachments) && memo.attachments.length
+      ? memo.attachments
+      : memo && Array.isArray(memo.resources) && memo.resources.length
+        ? memo.resources
+        : (memo && memo.resourceList) || []
+
+  for (const attachment of attachments) {
+    const link = attachment && attachment.externalLink ? attachment.externalLink : buildV1ResourceStreamUrl(info, attachment)
+    if (!link) continue
+    const isImage = String((attachment.type || '')).slice(0, 5) === 'image'
+    if (isImage) {
+      const image = document.createElement('img')
+      image.className = 'random-image'
+      if (adapter.needsAuthenticatedImagePreview()) image.dataset.authSrc = link
+      else image.src = link
+      card.appendChild(image)
+    } else {
+      const node = document.createElement('a')
+      node.href = link
+      node.target = '_blank'
+      node.rel = 'noopener noreferrer'
+      node.textContent = attachment.filename || ''
+      card.appendChild(node)
+    }
+  }
+
+  return card
+}
+
 // One place for the "show a list below the editor" animation. The old
 // slideDown(500) made the popup look sluggish and jumped the layout.
 // `results-open` lets the fullscreen layout move the list beside the editor
 // (it would otherwise be pushed below a viewport that does not scroll).
 function showRandomList(content) {
-  $('#randomlist').stop(true, true).html(content).show()
+  const $list = $('#randomlist').stop(true, true).empty()
+  if (typeof content === 'string') $list.html(content)
+  else if (content) $list.append(content)
+  $list.show()
   document.body.classList.add('results-open')
 }
 
@@ -511,12 +625,10 @@ try {
 window.addEventListener('i18n:changed', (ev) => {
   applyDayjsLocaleByUiLanguage(ev && ev.detail ? ev.detail.lang : 'auto')
   updateLockNowText(currentMemoLock)
-  renderUploadList(relistNow)
+  renderUploadList(pendingAttachments)
 })
 
-let relistNow = []
-
-const API_FLAVOR_V020_V021 = 'v020-v021'
+let pendingAttachments = []
 
 const DEFAULT_ATTACHMENT_ONLY_TEXT = '#附件 此为默认填充,如需自定义,请在发送附件前填写你的文本内容或者设置项里自定义.'
 
@@ -625,30 +737,23 @@ get_info(function (info) {
   $('#hideInput').val(info.hidetag)
   $('#showInput').val(info.showtag)
   $('#attachmentOnlyDefaultText').val(info.attachmentOnlyDefaultText)
-  if (info.open_action === 'upload_image') {
-    //打开的时候就是上传图片
-    uploadImage(info.open_content)
-  } else {
-    const $textarea = $("textarea[name=text]")
-    $textarea.val(info.open_content)
-    focusTextareaToEnd($textarea)
-  }
+  const $textarea = $("textarea[name=text]")
+  $textarea.val(info.open_content)
+  focusTextareaToEnd($textarea)
 
-  relistNow = Array.isArray(info.resourceIdList) ? info.resourceIdList : []
-  renderUploadList(relistNow)
-  initProportionalEditorResize()
+  pendingAttachments = Array.isArray(info.resourceIdList) ? info.resourceIdList : []
+  renderUploadList(pendingAttachments)
+  initEditorResize()
   initFullscreenColumnResize()
-  //从localstorage 里面读取数据
-  setTimeout(get_info, 1)
 })
 
 chrome.storage.onChanged.addListener(function (changes, areaName) {
   if (areaName !== 'sync') return
   if (!changes.resourceIdList) return
-  relistNow = Array.isArray(changes.resourceIdList.newValue)
+  pendingAttachments = Array.isArray(changes.resourceIdList.newValue)
     ? changes.resourceIdList.newValue
     : []
-  renderUploadList(relistNow)
+  renderUploadList(pendingAttachments)
 })
 
 // focus is handled after textarea content is set
@@ -944,7 +1049,8 @@ function memoFromNow(memo) {
   const raw = memo.createTime || memo.createdAt || memo.createdTs
   const normalized = normalizeUnixTimeToMs(raw)
   if (!normalized) return ''
-  return dayjs(normalized).fromNow()
+  const moment = dayjs(normalized)
+  return typeof moment.fromNow === 'function' ? moment.fromNow() : moment.format('YYYY-MM-DD HH:mm')
 }
 
 function hydrateV1PreviewImages(info) {
@@ -1114,8 +1220,8 @@ function renderUploadList(list) {
 }
 
 function saveUploadList(nextList, callback) {
-  relistNow = Array.isArray(nextList) ? nextList : []
-  chrome.storage.sync.set({ resourceIdList: relistNow }, callback)
+  pendingAttachments = Array.isArray(nextList) ? nextList : []
+  chrome.storage.sync.set({ resourceIdList: pendingAttachments }, callback)
 }
 
 let uploadDragIndex = null
@@ -1159,13 +1265,13 @@ $(document).on('drop', '.upload-item', function (e) {
   if (fromIndex < 0 || toIndex < 0) return
   if (fromIndex === toIndex) return
 
-  const next = (Array.isArray(relistNow) ? relistNow : []).slice()
+  const next = (Array.isArray(pendingAttachments) ? pendingAttachments : []).slice()
   if (fromIndex >= next.length || toIndex >= next.length) return
   const moved = next.splice(fromIndex, 1)[0]
   next.splice(toIndex, 0, moved)
 
   saveUploadList(next, function () {
-    renderUploadList(relistNow)
+    renderUploadList(pendingAttachments)
   })
 })
 
@@ -1184,12 +1290,12 @@ $(document).on('click', '.upload-del', function () {
     adapter.deleteResource(
       { name: name, id: rid },
       function () {
-        const next = (Array.isArray(relistNow) ? relistNow : []).filter(function (x) {
+        const next = (Array.isArray(pendingAttachments) ? pendingAttachments : []).filter(function (x) {
           return x && x.name !== name
         })
         saveUploadList(next, function () {
           $.message({ message: msg('attachmentDeleteSuccess') })
-          renderUploadList(relistNow)
+          renderUploadList(pendingAttachments)
         })
       },
       function () {
@@ -1199,10 +1305,24 @@ $(document).on('click', '.upload-del', function () {
   })
 })
 
+// Transient, per-browser flag shared with the background: a context-menu click
+// must not append text while an upload is rewriting the draft. `session`
+// storage is the right area for ephemeral state (it is not synced).
+function setUploading(value) {
+  try {
+    const area = chrome.storage.session || chrome.storage.local
+    area.set({ uploading: Boolean(value) })
+  } catch (_) {
+    // best-effort only
+  }
+}
+
 function uploadImage(file, done) {
   const finish = function (err) {
+    setUploading(false)
     if (typeof done === 'function') done(err)
   }
+  setUploading(true)
   $.message({
     message: msg('picUploading'),
     autoClose: false
@@ -1219,14 +1339,14 @@ function uploadImage(file, done) {
       },
       function (entity) {
         if (entity) {
-          relistNow.push(entity)
+          pendingAttachments.push(entity)
           // Keep the draft: clearing it here lost the text if the popup closed
           // right after an upload.
           chrome.storage.sync.set(
-            { open_action: '', open_content: $("textarea[name=text]").val(), resourceIdList: relistNow },
+            { open_action: '', open_content: $("textarea[name=text]").val(), resourceIdList: pendingAttachments },
             function () {
               $.message({ message: msg('picSuccess') })
-              renderUploadList(relistNow)
+              renderUploadList(pendingAttachments)
               finish(null)
             }
           )
@@ -1347,7 +1467,7 @@ $('#tags').click(function () {
         //console.log('[memos-bber] tags result:', tags)
         const uniTags = [...new Set((Array.isArray(tags) ? tags : []).filter(Boolean))]
         $.each(uniTags, function (_, tag) {
-          tagDom += '<span class="item-container">#' + tag + '</span>';
+          tagDom += '<span class="item-container">#' + escapeHtml(tag) + '</span>';
         });
         tagDom += '<svg id="hideTag" class="hidetag" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M78.807 362.435c201.539 314.275 666.962 314.188 868.398-.241 16.056-24.99 13.143-54.241-4.04-62.54-17.244-8.377-40.504 3.854-54.077 24.887-174.484 272.338-577.633 272.41-752.19.195-13.573-21.043-36.874-33.213-54.113-24.837-17.177 8.294-20.06 37.545-3.978 62.536z" fill="#fff"/><path d="M894.72 612.67L787.978 494.386l38.554-34.785 106.742 118.251-38.554 34.816zM635.505 727.51l-49.04-147.123 49.255-16.41 49.054 147.098-49.27 16.435zm-236.18-12.001l-49.568-15.488 43.29-138.48 49.557 15.513-43.28 138.455zM154.49 601.006l-38.743-34.565 95.186-106.732 38.763 34.566-95.206 106.731z" fill="#fff"/></svg>'
         $("#taglist").html(tagDom).slideToggle(500)
@@ -1397,82 +1517,49 @@ $(document).on("click",".item-lock",function () {
   }
   $("#lock-wrapper").toggleClass( "!hidden", 1000 );
   $("#lock-now").text($(this).text())
-    _this = $(this)[0].dataset.type;
-    currentMemoLock = _this
+    const lockType = $(this)[0].dataset.type
+    currentMemoLock = lockType
     chrome.storage.sync.set(
-      {memo_lock: _this}
+      {memo_lock: lockType}
     )
 })
 
 $('#search').click(function () {
   get_info(function (info) {
-  const pattern = $("textarea[name=text]").val()
-  if (info.status) {
-    hideRandomList()
-    var searchDom = ""
-    if(pattern){
-      const adapter = getApiAdapter(info)
-
-      adapter.searchMemos(
-        pattern,
-        function (searchData) {
-          if(searchData.length == 0){
-            $.message({
-              message: msg('searchNone')
-            })
-          }else{
-            for(var i=0;i < searchData.length;i++){
-              var memosID = getMemoUid(searchData[i])
-              var timeText = memoFromNow(searchData[i])
-              searchDom += '<div class="random-item"><div class="random-time"><span id="random-link" data-uid="'+memosID+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M864 640a32 32 0 0 1 64 0v224.096A63.936 63.936 0 0 1 864.096 928H159.904A63.936 63.936 0 0 1 96 864.096V159.904C96 124.608 124.64 96 159.904 96H384a32 32 0 0 1 0 64H192.064A31.904 31.904 0 0 0 160 192.064v639.872A31.904 31.904 0 0 0 192.064 864h639.872A31.904 31.904 0 0 0 864 831.936V640zm-485.184 52.48a31.84 31.84 0 0 1-45.12-.128 31.808 31.808 0 0 1-.128-45.12L815.04 166.048l-176.128.736a31.392 31.392 0 0 1-31.584-31.744 32.32 32.32 0 0 1 31.84-32l255.232-1.056a31.36 31.36 0 0 1 31.584 31.584L924.928 388.8a32.32 32.32 0 0 1-32 31.84 31.392 31.392 0 0 1-31.712-31.584l.736-179.392L378.816 692.48z" fill="#666" data-spm-anchor-id="a313x.7781069.0.i12" class="selected"/></svg></span><span id="random-delete" data-name="'+searchData[i].name+'" data-id="'+(searchData[i].id != null ? searchData[i].id : '')+'" data-uid="'+memosID+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M224 322.6h576c16.6 0 30-13.4 30-30s-13.4-30-30-30H224c-16.6 0-30 13.4-30 30 0 16.5 13.5 30 30 30zm66.1-144.2h443.8c16.6 0 30-13.4 30-30s-13.4-30-30-30H290.1c-16.6 0-30 13.4-30 30s13.4 30 30 30zm339.5 435.5H394.4c-16.6 0-30 13.4-30 30s13.4 30 30 30h235.2c16.6 0 30-13.4 30-30s-13.4-30-30-30z" fill="#666"/><path d="M850.3 403.9H173.7c-33 0-60 27-60 60v360c0 33 27 60 60 60h676.6c33 0 60-27 60-60v-360c0-33-27-60-60-60zm-.1 419.8l-.1.1H173.9l-.1-.1V464l.1-.1h676.2l.1.1v359.7z" fill="#666"/></svg></span>'+timeText+'</div><div class="random-content">'+(searchData[i].content || '').replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div>'
-              var resources = (searchData[i].attachments && searchData[i].attachments.length > 0) ? searchData[i].attachments : ((searchData[i].resources && searchData[i].resources.length > 0) ? searchData[i].resources : (searchData[i].resourceList || []));
-              if(resources && resources.length > 0){
-                for(var j=0;j < resources.length;j++){
-                  var restype = (resources[j].type || '').slice(0,5);
-                  var resexlink = resources[j].externalLink
-                  var resLink = '',fileId=''
-                  if(resexlink){
-                    resLink = resexlink
-                  }else{
-                    resLink = buildV1ResourceStreamUrl(info, resources[j])
-                }
-                  if (!resLink) {
-                    continue
-                  }
-                  if(restype == 'image'){
-                    if (adapter.needsAuthenticatedImagePreview()) {
-                      searchDom += '<img class="random-image" data-auth-src="'+resLink+'"/>'
-                    } else {
-                      searchDom += '<img class="random-image" src="'+resLink+'"/>'
-                    }
-                  }
-                  if(restype !== 'image'){
-                    searchDom += '<a target="_blank" rel="noreferrer" href="'+resLink+'">'+resources[j].filename+'</a>'
-                  }
-                }
-              }
-              searchDom += '</div>'
-            }
-            window.ViewImage && ViewImage.init('.random-image')
-            showRandomList(searchDom)
-            hydrateV1PreviewImages(info)
-          }
-        },
-        function (xhr) {
-          $.message({ message: msg('searchNone') })
-        }
-      )
-    }else{
-      $.message({
-        message: msg('searchNow')
-      })
+    if (!info.status) {
+      $.message({ message: msg('placeApiUrl') })
+      return
     }
-  } else {
-    $.message({
-      message: msg('placeApiUrl')
-    })
-  }
-})
+    hideRandomList()
+
+    const pattern = $("textarea[name=text]").val()
+    if (!pattern) {
+      $.message({ message: msg('searchNow') })
+      return
+    }
+
+    const adapter = getApiAdapter(info)
+    if (!adapter) return
+
+    adapter.searchMemos(
+      pattern,
+      function (results) {
+        const list = Array.isArray(results) ? results : []
+        if (list.length === 0) {
+          $.message({ message: msg('searchNone') })
+          return
+        }
+        const fragment = document.createDocumentFragment()
+        for (const memo of list) fragment.appendChild(createMemoCard(memo, info, adapter))
+        window.ViewImage && ViewImage.init('.random-image')
+        showRandomList(fragment)
+        hydrateV1PreviewImages(info)
+      },
+      function () {
+        $.message({ message: msg('searchNone') })
+      }
+    )
+  })
 })
 
 $('#random').click(function () {
@@ -1494,7 +1581,7 @@ $('#random').click(function () {
           }
           let randomNum = Math.floor(Math.random() * (memos.length));
           var randomData = memos[randomNum]
-          randDom(randomData)
+          renderRandomMemo(randomData)
         },
         function (err) {
           //console.error('[memos-bber] random failed:', err)
@@ -1509,87 +1596,60 @@ $('#random').click(function () {
   })
 })
 
-function randDom(randomData){
+function renderRandomMemo(memo) {
   get_info(function (info) {
     const adapter = getApiAdapter(info)
-  var memosID = getMemoUid(randomData)
-  var timeText = memoFromNow(randomData)
-  var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-uid="'+memosID+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M864 640a32 32 0 0 1 64 0v224.096A63.936 63.936 0 0 1 864.096 928H159.904A63.936 63.936 0 0 1 96 864.096V159.904C96 124.608 124.64 96 159.904 96H384a32 32 0 0 1 0 64H192.064A31.904 31.904 0 0 0 160 192.064v639.872A31.904 31.904 0 0 0 192.064 864h639.872A31.904 31.904 0 0 0 864 831.936V640zm-485.184 52.48a31.84 31.84 0 0 1-45.12-.128 31.808 31.808 0 0 1-.128-45.12L815.04 166.048l-176.128.736a31.392 31.392 0 0 1-31.584-31.744 32.32 32.32 0 0 1 31.84-32l255.232-1.056a31.36 31.36 0 0 1 31.584 31.584L924.928 388.8a32.32 32.32 0 0 1-32 31.84 31.392 31.392 0 0 1-31.712-31.584l.736-179.392L378.816 692.48z" fill="#666" data-spm-anchor-id="a313x.7781069.0.i12" class="selected"/></svg></span><span id="random-delete" data-uid="'+memosID+'" data-name="'+randomData.name+'" data-id="'+(randomData && randomData.id != null ? randomData.id : '')+'"><svg class="icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M224 322.6h576c16.6 0 30-13.4 30-30s-13.4-30-30-30H224c-16.6 0-30 13.4-30 30 0 16.5 13.5 30 30 30zm66.1-144.2h443.8c16.6 0 30-13.4 30-30s-13.4-30-30-30H290.1c-16.6 0-30 13.4-30 30s13.4 30 30 30zm339.5 435.5H394.4c-16.6 0-30 13.4-30 30s13.4 30 30 30h235.2c16.6 0 30-13.4 30-30s-13.4-30-30-30z" fill="#666"/><path d="M850.3 403.9H173.7c-33 0-60 27-60 60v360c0 33 27 60 60 60h676.6c33 0 60-27 60-60v-360c0-33-27-60-60-60zm-.1 419.8l-.1.1H173.9l-.1-.1V464l.1-.1h676.2l.1.1v359.7z" fill="#666"/></svg></span>'+timeText+'</div><div class="random-content">'+(randomData && randomData.content ? randomData.content : '').replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div>'
-  var resources = (randomData.attachments && randomData.attachments.length > 0) ? randomData.attachments : ((randomData.resources && randomData.resources.length > 0) ? randomData.resources : (randomData.resourceList || []));
-  if(resources && resources.length > 0){
-    for(var j=0;j < resources.length;j++){
-      var restype = (resources[j].type || '').slice(0,5);
-      var resexlink = resources[j].externalLink
-      var resLink = '',fileId=''
-      if(resexlink){
-        resLink = resexlink
-      }else{
-        resLink = buildV1ResourceStreamUrl(info, resources[j])
-      }
-      if (!resLink) {
-        continue
-      }
-      if(restype == 'image'){
-        if (adapter.needsAuthenticatedImagePreview()) {
-          randomDom += '<img class="random-image" data-auth-src="'+resLink+'"/>'
-        } else {
-          randomDom += '<img class="random-image" src="'+resLink+'"/>'
-        }
-      }
-      if(restype !== 'image'){
-        randomDom += '<a target="_blank" rel="noreferrer" href="'+resLink+'">'+resources[j].filename+'</a>'
-      }
-    }
-  }
-  randomDom += '</div>'
-  window.ViewImage && ViewImage.init('.random-image')
-  showRandomList(randomDom)
-  hydrateV1PreviewImages(info)
+    if (!adapter) return
+    showRandomList(createMemoCard(memo, info, adapter))
+    window.ViewImage && ViewImage.init('.random-image')
+    hydrateV1PreviewImages(info)
   })
 }
 
-$(document).on("click","#random-link",function () {
-  var memoUid = $("#random-link").data('uid');
+$(document).on('click', '.random-link', function () {
+  const memoUid = $(this).data('uid')
+  if (!memoUid) return
   get_info(function (info) {
     const path = (info.memoUiPath || 'memos').replace(/^\/+|\/+$/g, '')
-    chrome.tabs.create({url:info.apiUrl + path + "/" + memoUid})
+    chrome.tabs.create({ url: info.apiUrl + path + '/' + memoUid })
   })
 })
 
-$(document).on("click","#random-delete",function () {
-get_info(function (info) {
-  var memosName = $("#random-delete").data('name');
-  var memoId = $("#random-delete").data('id');
-
-  const adapter = getApiAdapter(info)
-  adapter.archiveMemo(
-    { name: memosName, id: memoId },
-    function () {
-      hideRandomList()
-      $.message({ message: msg('archiveSuccess') })
-    },
-    function () {
-      $.message({ message: msg('archiveFailed') })
-    }
-  )
-})
+$(document).on('click', '.random-delete', function () {
+  const memoName = $(this).data('name')
+  const memoId = $(this).data('id')
+  get_info(function (info) {
+    const adapter = getApiAdapter(info)
+    if (!adapter) return
+    adapter.archiveMemo(
+      { name: memoName, id: memoId },
+      function () {
+        hideRandomList()
+        $.message({ message: msg('archiveSuccess') })
+      },
+      function () {
+        $.message({ message: msg('archiveFailed') })
+      }
+    )
+  })
 })
 
 $(document).on("click",".item-container",function () {
   var tagHtml = $(this).text()+" "
-  add(tagHtml);
+  insertIntoDraft(tagHtml);
 })
 
 $('#newtodo').click(function () {
   var tagHtml = "\n- [ ] "
-  add(tagHtml);
+  insertIntoDraft(tagHtml);
 })
 
 $('#getlink').click(function () {
   chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-    var linkHtml = " ["+tab.title+"]("+tab.url+") "
+    const title = String(tab.title || '').replace(/[[\]]/g, '')
+    var linkHtml = " [" + title + "](" + tab.url + ") "
     if(tab.url){
-      add(linkHtml);
+      insertIntoDraft(linkHtml);
     }else{
       $.message({
         message: msg('getTabFailed')
@@ -1612,18 +1672,14 @@ $('#inFile').on('change', function(data){
   uploadImage(file)
 });
 
-function add(str) {
+function insertIntoDraft(str) {
   var tc = document.getElementById("content");
   var tclen = tc.value.length;
   tc.focus();
-  if(typeof document.selection != "undefined"){
-    document.selection.createRange().text = str;
-  }else{
-    tc.value = 
-      tc.value.substr(0, tc.selectionStart) +
-      str +
-      tc.value.substring(tc.selectionStart, tclen);
-  }
+  tc.value =
+    tc.value.substr(0, tc.selectionStart) +
+    str +
+    tc.value.substring(tc.selectionStart, tclen);
 }
 
 $('#blog_info_edit').click(function () {
@@ -1634,7 +1690,7 @@ $('#content_submit_text').click(function () {
   var contentVal = $("textarea[name=text]").val()
   var contentToSend = resolveSendContent(
     contentVal,
-    relistNow,
+    pendingAttachments,
     $('#attachmentOnlyDefaultText').val()
   )
   if(contentToSend){
@@ -1645,22 +1701,6 @@ $('#content_submit_text').click(function () {
     })
   }
 })
-
-function getOne(memosId){
-  get_info(function (info) {
-  if (info.apiUrl) {
-    hideRandomList()
-        const adapter = getApiAdapter(info)
-        adapter.getMemo(memosId, function (memoEntity) {
-          randDom(memoEntity)
-        })
-  } else {
-    $.message({
-      message: msg('placeApiUrl')
-    })
-  }
-  })
-}
 
 function sendText(preparedContent) {
   get_info(function (info) {
@@ -1705,9 +1745,9 @@ function sendText(preparedContent) {
             function () {
               $.message({ message: msg('memoSuccess') })
               $("textarea[name=text]").val('')
-              relistNow = []
-              renderUploadList(relistNow)
-              randDom(data)
+              pendingAttachments = []
+              renderUploadList(pendingAttachments)
+              renderRandomMemo(data)
             }
           )
         },

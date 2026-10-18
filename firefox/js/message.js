@@ -30,13 +30,13 @@ $.extend({
         if(typeof options === 'object'){
             defaults=$.extend({},defaults,options);
         }
-        //message模版
-        var template='<div class="tip animate bounceIn">\n' +
-            '    <p class="tip-info">'+defaults.message+'</p>\n' +
-            '</div>';
-        var _this=this;
+        // Static shell; the text is assigned as a text node. Server-supplied
+        // messages reach this component (see memoErrorText), so string
+        // interpolation here would be an XSS sink inside the extension.
+        var template = '<div class="tip animate bounceIn"><p class="tip-info"></p></div>';
         var $body=$('body');
         var $message=$(template);
+        $message.find('.tip-info').text(String(defaults.message == null ? '' : defaults.message));
         var timer;
 
         //移除所有并插入该消息

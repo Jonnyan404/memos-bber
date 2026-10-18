@@ -25,3 +25,16 @@ Android
 - 随机和搜索功能在所有受支持版本中都包含自己的私有 memo
 - 右键菜单可发送「选中文本 / 链接 / 当前页 / 图片」到草稿：发送后工具栏图标会显示 ✓，点开弹窗即是草稿
 - `Ctrl+Shift+F`（macOS `Ctrl+Shift+F`）直接打开编辑弹窗
+
+## 开发与校验
+
+扩展本身**没有运行时依赖**（jQuery 3.7.1 与 dayjs 以文件形式内置），`devDependencies` 只用于开发期工具：
+
+```bash
+npm ci                 # 只安装 eslint / web-ext
+npm run lint           # ESLint（no-undef / no-redeclare / no-unused-vars）
+npm run audit          # 仅审计生产依赖（0 漏洞）
+npm test               # = npm run verify：三端静态一致性 + 纯函数单测
+```
+
+更完整的验证（需要 Docker / Chrome / Firefox）见 `tools/verify/README.md`。

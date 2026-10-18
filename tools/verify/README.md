@@ -86,13 +86,18 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
   `awaitPromise: true`，否则拿到 Promise 对象会被误判为“已保存”。
 - 设置保存会先探测服务端版本，冷启动容器可能让首次请求失败；脚本会自动重点一次保存。
 
-## 5. 版本号与 CI
+## 5. 版本号、静态检查与 CI
 
 - 版本号只有一处：仓库根目录 `VERSION`。改版本用它，不要手改 manifest：
   ```bash
   node tools/set-version.mjs 2026.11.01   # 同时写 VERSION 与三端 manifest
   ```
   `tools/verify/bundles.mjs` 会校验三端 manifest 与 `VERSION` 一致。
+- `npm run lint`（ESLint，配置在 `eslint.config.mjs`）覆盖三端脚本与工具脚本：`no-undef`
+  能抓到隐式全局（历史上 `_this = ...` 就是靠它发现的），`no-redeclare` / `no-unused-vars`
+  防死代码堆积；内置库（jquery/dayjs/locale）不参与 lint。
+- `npm run audit` 只审计**生产依赖**（本项目为 0）：`web-ext` 的传递依赖有开发期告警，
+  它不随扩展发布，也不参与 `web-ext lint` 的打包路径。
 - `.github/workflows/verify.yml`：
   - 每次 push / PR：bundle 静态检查 + 矩阵子集（0.15 / 0.23 / 0.26 / 0.31 / 26.10）
   - 每晚 18:00 UTC：完整 16 版本矩阵

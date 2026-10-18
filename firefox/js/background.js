@@ -1,6 +1,6 @@
 const UI_LANGUAGE_STORAGE_KEY = 'uiLanguage'
 
-const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'zh_CN', 'ja', 'ko'])
+const SUPPORTED_UI_LANGUAGES = new Set(['auto', 'en', 'de', 'fr', 'es', 'zh_CN', 'ja', 'ko'])
 
 // One descriptor list drives creation, title refresh and click dispatch, so the
 // three can never drift apart again.
@@ -24,6 +24,21 @@ function normalizeUiLanguage(value) {
 function storageSyncGet(defaults) {
   return new Promise((resolve) => {
     chrome.storage.sync.get(defaults, (items) => resolve(items || {}))
+  })
+}
+
+// Ephemeral state (a running upload) lives in session storage, not in sync.
+function storageSessionGet(defaults) {
+  return new Promise((resolve) => {
+    try {
+      if (!chrome.storage.session) {
+        resolve(defaults)
+        return
+      }
+      chrome.storage.session.get(defaults, (items) => resolve(items || defaults))
+    } catch (_) {
+      resolve(defaults)
+    }
   })
 }
 
@@ -333,7 +348,8 @@ async function handleMenuClick(info, tab) {
   }
 
   const items = await storageSyncGet({ open_action: 'save_text', open_content: '' })
-  if (items.open_action === 'upload_image') {
+  const session = await storageSessionGet({ uploading: false })
+  if (session.uploading === true) {
     // An upload is mid-flight and will rewrite open_content when it finishes;
     // appending now would be overwritten (or overwrite the uploader's state).
     setBadge(BADGE_ERROR, BADGE_ERROR_COLOR)

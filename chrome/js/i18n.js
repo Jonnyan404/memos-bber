@@ -163,6 +163,9 @@ function applyStaticI18n() {
 async function setUiLanguage(nextLang, { persist = true } = {}) {
 	const lang = normalizeUiLanguage(nextLang)
 	currentUiLanguage = lang
+	// Keep the document language in sync: screen readers and hyphenation use it.
+	const htmlLang = lang === 'auto' ? String(navigator.language || 'en') : lang.replace('_', '-')
+	document.documentElement.lang = htmlLang
 	overrideMessages = await loadLocaleMessages(lang)
 	applyStaticI18n()
 	syncLanguageToggleText(lang)

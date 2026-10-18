@@ -151,6 +151,18 @@ for (const bundle of BUNDLES) {
     oper.includes("handle.addEventListener('keydown', onKeyDown)") && oper.includes("'ArrowRight'")
   )
   const bg = exists(path.join(dir, 'js/background.js')) ? read(path.join(dir, 'js/background.js')) : ''
+  const message = exists(path.join(dir, 'js/message.js')) ? read(path.join(dir, 'js/message.js')) : ''
+
+  // XSS regression guards: memo content and server messages are untrusted.
+  check(bundle, 'memo cards built as DOM', oper.includes('function createMemoCard') && oper.includes('function renderMemoContent'))
+  check(bundle, 'no memo content concatenated into HTML', !oper.includes('"random-content">\''))
+  check(bundle, 'toast text is not markup', message.includes('.text(String(defaults.message'))
+  check(bundle, 'upload state uses session storage', oper.includes('function setUploading') && bg.includes('storageSessionGet'))
+
+  const KNOWN_PERMISSIONS = new Set(['tabs', 'scripting', 'storage', 'activeTab', 'contextMenus'])
+  const declared = Array.isArray(manifest.permissions) ? manifest.permissions : []
+  const unknown = declared.filter((permission) => !KNOWN_PERMISSIONS.has(permission))
+  check(bundle, 'no unknown permissions', unknown.length === 0, unknown.join(','))
   check(
     bundle,
     'context menus rebuilt with guards',

@@ -20,6 +20,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+      - name: Lint (ESLint)
+        run: npx --yes eslint@9 .
+      - name: Dependency audit (runtime dependencies only)
+        run: npm audit --omit=dev
       - name: Unit checks (pure adapter helpers)
         run: node tools/verify/unit.mjs
       - name: Static checks (wiring, adapter parity, versions, locales)

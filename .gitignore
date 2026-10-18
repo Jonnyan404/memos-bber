@@ -1,2 +1,3 @@
 *.DS_Store
 tools/verify/last-run.json
+node_modules/

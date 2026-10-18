@@ -905,6 +905,25 @@ async function main() {
     } else {
       ok = found.length >= 1
       console.log(ok ? `PASS memo created on server (${found[0].name}, visibility=${found[0].visibility})` : 'FAIL memo not found on server')
+
+      // Sending renders a card from the returned memo: catch a broken renderer
+      // (it builds DOM nodes now, so a throw would leave the list empty).
+      const card = await evaluate(
+        cdp,
+        `(() => {
+          const item = document.querySelector('#randomlist .random-item')
+          return item
+            ? {
+                text: (item.querySelector('.random-content') || {}).textContent || '',
+                images: item.querySelectorAll('img').length,
+                icons: item.querySelectorAll('.random-link svg, .random-delete svg').length
+              }
+            : null
+        })()`
+      )
+      const okCard = Boolean(card && card.text.indexOf(TEXT) !== -1 && card.icons === 2)
+      console.log(okCard ? 'PASS sent memo renders as a card' : `FAIL memo card missing (${JSON.stringify(card)})`)
+      if (!okCard) process.exitCode = 1
     }
 
     if (!ok) process.exitCode = 1

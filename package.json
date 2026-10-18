@@ -1,0 +1,24 @@
+{
+  "name": "memos-bber",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Memos browser extension for Chrome, Edge and Firefox (desktop + Android)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "audit": "npm audit --omit=dev",
+    "verify": "node tools/verify/bundles.mjs && node tools/verify/unit.mjs",
+    "verify:ui": "node tools/verify/chrome-ui.mjs",
+    "verify:background": "node tools/verify/background-live.mjs",
+    "verify:matrix": "node tools/verify/memos-api-matrix.mjs",
+    "verify:firefox": "node tools/verify/firefox-smoke.mjs",
+    "set-version": "node tools/set-version.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.0",
+    "web-ext": "^10.8.0"
+  }
+}
