@@ -102,10 +102,6 @@ a{color: #555;}
     background-color: transparent;
 }
 
-.body.fullscreen #editor-resize-handle{
-    display: none;
-}
-
 .body.fullscreen #fullscreen{
     display: none;
 }
@@ -201,9 +197,40 @@ a{color: #555;}
 .body.fullscreen > .tag-hide,
 .body.fullscreen > #randomlist{
     width: 100%;
-    max-width: 880px;
+    /* The column is user-resizable in fullscreen; 880px is the default. */
+    max-width: var(--editor-column, 880px);
     margin-left: auto;
     margin-right: auto;
+}
+
+/* Search / random results must stay reachable: with the editor taking the
+   leftover height they used to be pushed below a non-scrolling viewport. */
+.body.fullscreen #randomlist{
+    flex: 0 1 auto;
+    max-height: 45vh;
+    overflow-y: auto;
+    margin-top: .75rem;
+}
+
+.body.fullscreen.results-open .memo-editor{
+    min-height: 30vh;
+}
+
+/* On a wide window the results belong beside the editor, not underneath it. */
+@media (min-width: 1180px) {
+    .body.fullscreen.results-open{
+        padding-right: 400px;
+    }
+    .body.fullscreen.results-open > #randomlist{
+        position: fixed;
+        top: 4rem;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 360px;
+        max-height: none;
+        margin: 0;
+        overflow-y: auto;
+    }
 }
 
 .body.fullscreen .memo-editor{

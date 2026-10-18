@@ -72,6 +72,8 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `resize` | 用真实鼠标拖角：宽高各自独立变化、拖拽中只做 `transform` 预览、松手后落盘到 `popupEditorSize`；方向键 ±24px、双击复位 |
 | `drop-multi` | 在编辑器上 drop 两个 PNG：两个都上传、高亮清除、草稿不被清空，发送后 memo 带 2 个附件 |
 | `fullscreen-layout` | 全屏页（`--page=popup.html?mode=full`）无整页滚动、编辑区 880 上限且占满剩余高度、发送按钮在视口内、语言/设置按钮仍在视口内 |
+| `fullscreen-panel` | 全屏页列宽可拖拽并单独记忆（`fullscreenEditorWidth`，双击复位）；结果列表在宽屏位于编辑器右侧、窄屏在下方且不会超出视口 |
+| `drop-text` | 拖入 `text/uri-list` / `text/plain` 会追加进草稿（URI 优先、去注释行、空行分隔），并同步写入 `open_content` |
 
 ## 4. 它做了什么 / 坑
 
@@ -172,7 +174,16 @@ node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" -
 
 拖放上传：整个编辑器都可接收（原来只有 textarea），多文件按顺序逐个上传，文件夹/空文件
 跳过并提示，拖入时给编辑区加 `drop-active` 虚线高亮（原来是把整页 opacity 降到 0.3），
-上传成功不再清空草稿。
+上传成功不再清空草稿。拖入**文字/链接**同样接收：`text/uri-list` 取第一条非注释行、否则用
+`text/plain`，按空行分隔追加到草稿并同步 `open_content`。
+
+全屏页还有两处专门处理：
+
+- **列宽可调**：全屏没有弹窗可缩放，同一个把手改为调整阅读列宽（480–1200，默认 880），
+  存在 `fullscreenEditorWidth`，与弹窗的 `popupEditorSize` 互不影响；方向键/双击同样可用。
+- **结果面板**：搜索/随机结果以前会被挤到不滚动的视口下方而看不见。现在 `results-open`
+  让宽屏（≥1180px）把列表放到编辑器右侧（body 让出 400px），窄屏则放在编辑器下方并可滚动，
+  编辑器保留 30vh 最小高度。
 
 ## 9. 右键菜单与快捷键
 

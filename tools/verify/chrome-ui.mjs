@@ -456,7 +456,8 @@ async function main() {
         layout.editorWidth <= 900 &&
         layout.editorHeight >= Math.round(layout.viewport[1] * 0.5) &&
         layout.submitBottom <= layout.viewport[1] &&
-        layout.handleHidden &&
+        // The handle is visible in fullscreen now: it resizes the column.
+        !layout.handleHidden &&
         layout.fullButtonHidden &&
         layout.lang && layout.lang[0] >= 0 && layout.lang[2] <= layout.viewport[0] &&
         layout.gear && layout.gear[0] >= 0 && layout.gear[2] <= layout.viewport[0]
@@ -586,6 +587,121 @@ async function main() {
         await sleep(400)
         await capture(cdp, SCREENSHOT)
       }
+    }
+
+    if (SCENARIO === 'fullscreen-panel') {
+      const read = () =>
+        evaluate(
+          cdp,
+          `(() => {
+            const e = document.querySelector('.memo-editor')
+            const h = document.querySelector('#editor-resize-handle')
+            const hr = h.getBoundingClientRect()
+            return {
+              w: Math.round(e.getBoundingClientRect().width),
+              hx: Math.round(hr.left + hr.width / 2),
+              hy: Math.round(hr.top + hr.height / 2),
+              column: getComputedStyle(document.body).getPropertyValue('--editor-column').trim()
+            }
+          })()`
+        )
+
+      const before = await read()
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: before.hx, y: before.hy, button: 'left', buttons: 1, clickCount: 1 })
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hx + 100, y: before.hy, button: 'left', buttons: 1 })
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: before.hx + 100, y: before.hy, button: 'left', buttons: 0, clickCount: 1 })
+      await sleep(250)
+      const after = await read()
+      const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(['fullscreenEditorWidth'], r))`, {
+        awaitPromise: true
+      })
+
+      await evaluate(cdp, `(() => { document.querySelector('#editor-resize-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return true })()`)
+      await sleep(150)
+      const reset = await read()
+
+      // Results must land beside the editor on a wide window, not below it.
+      await evaluate(cdp, `showRandomList('<div class="random-item">panel probe</div>')`)
+      await sleep(300)
+      const panel = await evaluate(
+        cdp,
+        `(() => {
+          const e = document.querySelector('.memo-editor').getBoundingClientRect()
+          const r = document.querySelector('#randomlist').getBoundingClientRect()
+          return {
+            open: document.body.classList.contains('results-open'),
+            left: Math.round(r.left),
+            right: Math.round(r.right),
+            top: Math.round(r.top),
+            height: Math.round(r.height),
+            editorRight: Math.round(e.right),
+            editorBottom: Math.round(e.bottom),
+            vw: window.innerWidth,
+            vh: window.innerHeight
+          }
+        })()`
+      )
+      console.log('fullscreen panel:', JSON.stringify({ before, after, stored, reset, panel }))
+      if (SCREENSHOT) await capture(cdp, SCREENSHOT)
+
+      // Wide window: the list sits beside the editor. Narrow: below it, but
+      // still on screen (it used to be pushed out of a non-scrolling page).
+      const sideBySide = panel.vw >= 1180
+      const placementOk = sideBySide
+        ? panel.left >= panel.editorRight && panel.right <= panel.vw
+        : panel.top >= panel.editorBottom && panel.right <= panel.vw && panel.height <= Math.round(panel.vh * 0.5)
+      // A narrow window clamps the column, so assert movement rather than an
+      // exact +100.
+      const okPanel =
+        after.w > before.w &&
+        after.w <= Math.min(1200, panel.vw - 96) + 1 &&
+        Math.abs(Number(stored.fullscreenEditorWidth) - after.w) <= 4 &&
+        Math.abs(reset.w - 880) <= 4 &&
+        panel.open &&
+        placementOk &&
+        panel.height >= 40
+      console.log(
+        okPanel
+          ? 'PASS fullscreen column resizes and persists; results sit beside the editor'
+          : 'FAIL fullscreen column or results panel regressed'
+      )
+      if (!okPanel) process.exitCode = 1
+      return
+    }
+
+    if (SCENARIO === 'drop-text') {
+      const result = await evaluate(
+        cdp,
+        `(() => {
+          const area = document.querySelector('textarea[name=text]')
+          area.value = 'existing'
+          area.dispatchEvent(new Event('input', { bubbles: true }))
+          const editor = document.querySelector('.memo-editor')
+
+          const first = new DataTransfer()
+          first.setData('text/uri-list', '# comment\\nhttps://drop.test/a?b=1')
+          first.setData('text/plain', 'https://drop.test/a?b=1')
+          editor.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: first }))
+
+          const second = new DataTransfer()
+          second.setData('text/plain', '   plain dropped text   ')
+          editor.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: second }))
+
+          return area.value
+        })()`
+      )
+      await sleep(200)
+      const storedText = await evaluate(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(['open_content'], r))`,
+        { awaitPromise: true }
+      )
+      const expected = 'existing\n\nhttps://drop.test/a?b=1\n\nplain dropped text\n'
+      console.log('drop text value:', JSON.stringify(result))
+      const okText = result === expected && storedText.open_content === expected
+      console.log(okText ? 'PASS dropped link and text appended to the draft' : 'FAIL dropped text handling regressed')
+      if (!okText) process.exitCode = 1
+      return
     }
 
     if (SCENARIO === 'resize') {

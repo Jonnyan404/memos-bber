@@ -233,10 +233,125 @@ function initProportionalEditorResize() {
   }
 }
 
+// Fullscreen has no popup to resize, so the same handle adjusts the reading
+// column instead, and remembers that width separately from the popup size.
+function initFullscreenColumnResize() {
+  if (!isFullscreenMode()) return
+  const handle = document.getElementById('editor-resize-handle')
+  if (!handle) return
+
+  const storageKey = 'fullscreenEditorWidth'
+  const DEFAULT_WIDTH = 880
+  const MIN_WIDTH = 480
+
+  let width = DEFAULT_WIDTH
+  let maxWidth = DEFAULT_WIDTH
+  let dragging = false
+  let startX = 0
+  let startWidth = DEFAULT_WIDTH
+  let pendingWidth = DEFAULT_WIDTH
+
+  const clamp = (value) => Math.min(Math.max(Math.round(value), MIN_WIDTH), maxWidth)
+  const describe = (value) => handle.setAttribute('aria-valuetext', `${value}px column`)
+  const paint = (value) => document.body.style.setProperty('--editor-column', `${value}px`)
+
+  const apply = (value) => {
+    width = clamp(value)
+    paint(width)
+    describe(width)
+  }
+
+  const remember = () => {
+    try {
+      chrome.storage.sync.set({ [storageKey]: width })
+    } catch (_) {
+      // best-effort only
+    }
+  }
+
+  const computeMax = () => {
+    maxWidth = Math.max(MIN_WIDTH, Math.min(1200, Math.floor(window.innerWidth - 96)))
+    apply(width)
+  }
+
+  const startDrag = (ev) => {
+    if (typeof ev.button === 'number' && ev.button !== 0) return
+    ev.preventDefault()
+    dragging = true
+    startX = ev.clientX
+    startWidth = width
+    pendingWidth = width
+    handle.classList.add('dragging')
+    if (typeof handle.setPointerCapture === 'function') {
+      try {
+        handle.setPointerCapture(ev.pointerId)
+      } catch (_) {
+        // Ignore capture failures.
+      }
+    }
+  }
+
+  const onPointerMove = (ev) => {
+    if (!dragging) return
+    pendingWidth = clamp(startWidth + (ev.clientX - startX))
+    paint(pendingWidth)
+    describe(pendingWidth)
+  }
+
+  const endDrag = () => {
+    if (!dragging) return
+    dragging = false
+    handle.classList.remove('dragging')
+    apply(pendingWidth)
+    remember()
+  }
+
+  const onKeyDown = (ev) => {
+    const amount = ev.shiftKey ? 8 : 24
+    if (ev.key === 'ArrowRight') apply(width + amount)
+    else if (ev.key === 'ArrowLeft') apply(width - amount)
+    else if (ev.key === 'Home') apply(DEFAULT_WIDTH)
+    else return
+    ev.preventDefault()
+    remember()
+  }
+
+  computeMax()
+
+  try {
+    chrome.storage.sync.get({ [storageKey]: DEFAULT_WIDTH }, (items) => {
+      const saved = Number(items && items[storageKey])
+      if (Number.isFinite(saved) && saved >= MIN_WIDTH) apply(saved)
+    })
+  } catch (_) {
+    // best-effort only
+  }
+
+  handle.addEventListener('pointerdown', startDrag)
+  window.addEventListener('pointermove', onPointerMove)
+  handle.addEventListener('pointerup', endDrag)
+  handle.addEventListener('pointercancel', endDrag)
+  window.addEventListener('pointerup', endDrag)
+  handle.addEventListener('keydown', onKeyDown)
+  handle.addEventListener('dblclick', () => {
+    apply(DEFAULT_WIDTH)
+    remember()
+  })
+  window.addEventListener('resize', computeMax)
+}
+
 // One place for the "show a list below the editor" animation. The old
 // slideDown(500) made the popup look sluggish and jumped the layout.
+// `results-open` lets the fullscreen layout move the list beside the editor
+// (it would otherwise be pushed below a viewport that does not scroll).
 function showRandomList(content) {
   $('#randomlist').stop(true, true).html(content).show()
+  document.body.classList.add('results-open')
+}
+
+function hideRandomList() {
+  $('#randomlist').stop(true, true).html('').hide()
+  document.body.classList.remove('results-open')
 }
 
 function msg(key) {
@@ -522,6 +637,7 @@ get_info(function (info) {
   relistNow = Array.isArray(info.resourceIdList) ? info.resourceIdList : []
   renderUploadList(relistNow)
   initProportionalEditorResize()
+  initFullscreenColumnResize()
   //从localstorage 里面读取数据
   setTimeout(get_info, 1)
 })
@@ -593,15 +709,25 @@ function initDrag() {
     return types.indexOf('Files') !== -1
   }
 
+  // Dragging a link or a selection is just as valid as dragging an image.
+  const carriesText = (ev) => {
+    const dt = ev.dataTransfer
+    if (!dt) return false
+    const types = Array.prototype.slice.call(dt.types || [])
+    return types.indexOf('text/uri-list') !== -1 || types.indexOf('text/plain') !== -1
+  }
+
+  const isDrop = (ev) => carriesFiles(ev) || carriesText(ev)
+
   editor.addEventListener('dragenter', (ev) => {
-    if (!carriesFiles(ev)) return
+    if (!isDrop(ev)) return
     ev.preventDefault()
     depth++
     editor.classList.add('drop-active')
   })
 
   editor.addEventListener('dragover', (ev) => {
-    if (!carriesFiles(ev)) return
+    if (!isDrop(ev)) return
     ev.preventDefault()
     try {
       ev.dataTransfer.dropEffect = 'copy'
@@ -610,7 +736,7 @@ function initDrag() {
   })
 
   editor.addEventListener('dragleave', (ev) => {
-    if (!carriesFiles(ev)) return
+    if (!isDrop(ev)) return
     ev.preventDefault()
     // dragleave also fires when crossing child elements; count the nesting so
     // the highlight does not flicker while moving inside the editor.
@@ -619,12 +745,40 @@ function initDrag() {
   })
 
   editor.addEventListener('drop', (ev) => {
-    if (!carriesFiles(ev)) return
+    if (!isDrop(ev)) return
     ev.preventDefault()
-    const files = ev.dataTransfer ? ev.dataTransfer.files : null
+    const dt = ev.dataTransfer
+    const files = dt ? dt.files : null
     clearDropState()
-    uploadFiles(files)
+    if (files && files.length > 0) {
+      uploadFiles(files)
+      return
+    }
+    const uriList = dt ? String(dt.getData('text/uri-list') || '') : ''
+    const plain = dt ? String(dt.getData('text/plain') || '') : ''
+    // uri-list is comment-prefixed; the first real line is the link.
+    const link = uriList
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && line.charAt(0) !== '#')[0]
+    appendDroppedText(link || plain)
   })
+}
+
+// Dropped text becomes draft content, same normalisation as the context menu.
+function appendDroppedText(text) {
+  const area = document.querySelector('textarea[name=text]')
+  const block = String(text == null ? '' : text).replace(/\r\n?/g, '\n').trim()
+  if (!area || !block) return
+  const current = String(area.value || '').replace(/\s+$/, '')
+  area.value = current ? current + '\n\n' + block + '\n' : block + '\n'
+  area.dispatchEvent(new Event('input', { bubbles: true }))
+  try {
+    chrome.storage.sync.set({ open_action: 'save_text', open_content: area.value })
+  } catch (_) {
+    // best-effort only
+  }
+  focusTextareaToEnd($(area))
 }
 
 // Sequential upload keeps the attachment list in order and avoids racing the
@@ -1254,7 +1408,7 @@ $('#search').click(function () {
   get_info(function (info) {
   const pattern = $("textarea[name=text]").val()
   if (info.status) {
-    $("#randomlist").html('').hide()
+    hideRandomList()
     var searchDom = ""
     if(pattern){
       const adapter = getApiAdapter(info)
@@ -1325,7 +1479,7 @@ $('#random').click(function () {
   get_info(function (info) {
     //console.log('[memos-bber] random click info:', info)
     if (info.status) {
-      $("#randomlist").html('').hide()
+      hideRandomList()
       const adapter = getApiAdapter(info)
       if (!adapter) {
         //console.warn('[memos-bber] no adapter for random')
@@ -1411,7 +1565,7 @@ get_info(function (info) {
   adapter.archiveMemo(
     { name: memosName, id: memoId },
     function () {
-      $("#randomlist").html('').hide()
+      hideRandomList()
       $.message({ message: msg('archiveSuccess') })
     },
     function () {
@@ -1495,7 +1649,7 @@ $('#content_submit_text').click(function () {
 function getOne(memosId){
   get_info(function (info) {
   if (info.apiUrl) {
-    $("#randomlist").html('').hide()
+    hideRandomList()
         const adapter = getApiAdapter(info)
         adapter.getMemo(memosId, function (memoEntity) {
           randDom(memoEntity)

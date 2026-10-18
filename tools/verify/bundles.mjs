@@ -123,12 +123,28 @@ for (const bundle of BUNDLES) {
   }
 
   const oper = exists(path.join(dir, 'js/oper.js')) ? read(path.join(dir, 'js/oper.js')) : ''
+  const css = exists(path.join(dir, 'css/main.css')) ? read(path.join(dir, 'css/main.css')) : ''
   const adapter = exists(path.join(dir, 'js/compat/memosApi.js')) ? read(path.join(dir, 'js/compat/memosApi.js')) : ''
   check(bundle, 'adapter exposes detect()', /MemosApiAdapter\s*=\s*{[\s\S]*detect: detect/.test(adapter))
   check(bundle, 'settings use adapter.detect()', oper.includes('adapter.detect('))
   check(bundle, 'failures show reason', oper.includes('memoErrorText(') && !/msg\('memoFailed'\)\s*}\)\s*}\s*\)\s*}\s*$/.test(oper))
   check(bundle, 'default visibility is PRIVATE', /memo_lock:\s*'PRIVATE'/.test(oper) && !/memo_lock:\s*'PUBLIC'/.test(oper))
   check(bundle, 'no legacy adapter symbols', !/MemosApi(Modern|V023|V020V021)/.test(oper) && !/memosApi\.(adapter|modern|v0)/.test(html))
+  check(
+    bundle,
+    'fullscreen column is adjustable',
+    oper.includes('initFullscreenColumnResize') && oper.includes('--editor-column') && oper.includes('fullscreenEditorWidth')
+  )
+  check(
+    bundle,
+    'results get their own panel',
+    oper.includes("classList.add('results-open')") && css.includes('.body.fullscreen.results-open')
+  )
+  check(
+    bundle,
+    'text drops append to the draft',
+    oper.includes('appendDroppedText') && oper.includes("text/uri-list")
+  )
   check(
     bundle,
     'editor supports keyboard resize',
@@ -159,7 +175,6 @@ for (const bundle of BUNDLES) {
       oper.includes("hasClass('lock-blocked')") &&
       oper.includes('visibilityPolicy(')
   )
-  const css = exists(path.join(dir, 'css/main.css')) ? read(path.join(dir, 'css/main.css')) : ''
   check(bundle, 'blocked visibility is styled', css.includes('.item-lock.lock-blocked'))
 
   // every locale must carry the new error strings (English fallback is fine,
