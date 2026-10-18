@@ -263,6 +263,46 @@ function applyDayjsLocaleByUiLanguage(uiLang) {
   dayjs.locale('en')
 }
 
+// Some servers forbid PUBLIC memos (`disallowPublicVisibility`, 0.15-0.26).
+// Reflect that in the selector instead of letting the user hit a 403.
+let visibilityPolicy = null
+
+function applyVisibilityPolicy(disallow) {
+  visibilityPolicy = typeof disallow === 'boolean' ? disallow : null
+  const $public = $('#lockPublic')
+  if (!$public.length) return
+  if (visibilityPolicy === true) {
+    $public.addClass('lock-blocked')
+    $public.attr('aria-disabled', 'true')
+    $public.attr('title', msg('lockPublicBlocked'))
+    if (currentMemoLock === 'PUBLIC') {
+      currentMemoLock = 'PRIVATE'
+      $('#lock-now').text(msg('lockPrivate'))
+      chrome.storage.sync.set({ memo_lock: 'PRIVATE' })
+      $.message({ message: msg('lockPublicBlocked') })
+    }
+  } else {
+    $public.removeClass('lock-blocked')
+    $public.removeAttr('aria-disabled')
+    $public.removeAttr('title')
+  }
+}
+
+// Refresh silently on popup open: the server setting may have changed since
+// the token was saved. Failures keep the last known state.
+function refreshVisibilityPolicy(info) {
+  if (!info || !info.status) return
+  const adapter = getApiAdapter(info)
+  if (!adapter || typeof adapter.visibilityPolicy !== 'function') return
+  adapter.visibilityPolicy(function (policy) {
+    const value = policy && typeof policy.disallowPublic === 'boolean' ? policy.disallowPublic : null
+    applyVisibilityPolicy(value)
+    chrome.storage.sync.set({
+      disallowPublic: value === true ? '1' : value === false ? '0' : ''
+    })
+  }, function () {})
+}
+
 function updateLockNowText(lockType) {
   if (lockType === 'PUBLIC') {
     $('#lock-now').text(msg('lockPublic'))
@@ -317,6 +357,7 @@ function get_info(callback) {
       apiVersion: '',
       apiBase: '',
       userRef: '',
+      disallowPublic: '',
       hidetag: '',
       showtag: '',
       memo_lock: '',
@@ -342,6 +383,7 @@ function get_info(callback) {
       returnObject.apiVersion = items.apiVersion
       returnObject.apiBase = items.apiBase
       returnObject.userRef = items.userRef
+      returnObject.disallowPublic = items.disallowPublic
       returnObject.hidetag = items.hidetag
       returnObject.showtag = items.showtag
       returnObject.memo_lock = items.memo_lock
@@ -389,6 +431,10 @@ get_info(function (info) {
   }
   currentMemoLock = memoNow
   updateLockNowText(memoNow)
+  applyVisibilityPolicy(
+    info.disallowPublic === '1' ? true : info.disallowPublic === '0' ? false : null
+  )
+  refreshVisibilityPolicy(info)
   $('#apiUrl').val(info.apiUrl)
   $('#apiTokens').val(info.apiTokens)
   $('#hideInput').val(info.hidetag)
@@ -964,12 +1010,14 @@ function saveSettingsPanel() {
         memoUiPath: result.uiPath || 'memos',
         apiFlavor: known ? result.flavor : '',
         apiVersion: result.version || '',
-        apiBase: result.base || ''
+        apiBase: result.base || '',
+        disallowPublic: result.disallowPublic === true ? '1' : result.disallowPublic === false ? '0' : ''
       }),
       function () {
         $.message({ message: msg('saveSuccess') })
         $('#blog_info').hide()
         updateServerVersionLabel(result)
+        applyVisibilityPolicy(result.disallowPublic)
       }
     )
   })
@@ -1053,6 +1101,11 @@ $('#lock').click(function () {
 })
 
 $(document).on("click",".item-lock",function () {
+  if ($(this).hasClass('lock-blocked')) {
+    $("#lock-wrapper").toggleClass( "!hidden", 1000 );
+    $.message({ message: msg('lockPublicBlocked') })
+    return
+  }
   $("#lock-wrapper").toggleClass( "!hidden", 1000 );
   $("#lock-now").text($(this).text())
     _this = $(this)[0].dataset.type;

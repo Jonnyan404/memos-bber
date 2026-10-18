@@ -49,6 +49,42 @@ jobs:
           path: tools/verify/last-run.json
           if-no-files-found: ignore
 
+  visibility-policy:
+    name: Public visibility policy (greyed-out option)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install Chrome for Testing
+        run: npx --yes @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/chrome"
+      - name: Start Memos 0.26.1 with public memos disabled
+        run: |
+          docker run -d --name memos-lock -p 15402:5230 neosmemo/memos:0.26.1
+          for _ in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:15402/api/v1/instance/profile >/dev/null; then sleep 2; exit 0; fi
+            sleep 1
+          done
+          docker logs memos-lock
+          exit 1
+      - name: Enable disallowPublicVisibility
+        run: |
+          BASE=http://127.0.0.1:15402/api/v1
+          curl -sf -X POST "$BASE/users" -H 'Content-Type: application/json'             -d '{"username":"tester","password":"Passw0rd!123","role":"ADMIN"}' >/dev/null
+          TOKEN=$(curl -sf -X POST "$BASE/auth/signin" -H 'Content-Type: application/json'             -d '{"passwordCredentials":{"username":"tester","password":"Passw0rd!123"}}' | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).accessToken))")
+          curl -sf -X PATCH "$BASE/instance/settings/MEMO_RELATED?updateMask=memoRelatedSetting"             -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json'             -d '{"name":"instance/settings/MEMO_RELATED","memoRelatedSetting":{"disallowPublicVisibility":true,"contentLengthLimit":8192}}' >/dev/null
+          echo "MEMOS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - name: Adapter matrix with the restriction on
+        run: node tools/verify/memos-api-matrix.mjs --only 0.26.1 --disallow-public
+      - name: Popup greys out PUBLIC and refuses selection
+        run: |
+          CHROME=$(find "$RUNNER_TEMP/chrome" -type f -name chrome | head -1)
+          test -x "$CHROME"
+          CHROME_PATH="$CHROME" node tools/verify/chrome-ui.mjs \
+            --url http://127.0.0.1:15402/ --token "$MEMOS_TOKEN" --scenario locked-public
+
   firefox-smoke:
     name: Firefox install smoke
     runs-on: ubuntu-latest

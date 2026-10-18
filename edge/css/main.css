@@ -633,6 +633,13 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     font-size: .875rem;
     line-height: 2rem
 }
+.selector-wrapper>.items-wrapper>.item-lock.lock-blocked,
+.selector-wrapper>.items-wrapper>.item-lock.lock-blocked:hover {
+    cursor: not-allowed;
+    opacity: .45;
+    text-decoration: line-through;
+    background-color: transparent;
+}
 .selector-wrapper>.items-wrapper>.item-lock:hover {
     --tw-bg-opacity: 1;
     background-color: rgb(243 244 246 / var(--tw-bg-opacity))

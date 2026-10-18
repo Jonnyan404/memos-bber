@@ -43,6 +43,7 @@ let URL_BASE = TARGET_URL
 const TOKEN = arg('token', process.env.MEMOS_TOKEN || '')
 const EXT_DIR = path.resolve(ROOT, arg('extension', 'chrome'))
 const SCENARIO = arg('scenario', 'success')
+const SCREENSHOT = arg('screenshot', '')
 const HEADLESS = arg('headless', 'true') !== 'false'
 const KEEP = has('keep')
 const PORT = Number(arg('port', '9444'))
@@ -230,6 +231,18 @@ async function waitFor(cdp, expression, timeoutMs = 8000) {
   return false
 }
 
+async function waitForToast(cdp, pattern, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs
+  let last = ''
+  while (Date.now() < deadline) {
+    const text = await evaluate(cdp, `(document.querySelector('.tip-info') || {}).textContent || ''`).catch(() => '')
+    if (text) last = text
+    if (text && pattern.test(text)) return text
+    await sleep(150)
+  }
+  return last
+}
+
 async function readToast(cdp, timeoutMs = 12000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -380,9 +393,68 @@ async function main() {
       console.log('attachment uploaded through the real file input')
     }
 
+    if (SCENARIO === 'locked-public') {
+      const blocked = await waitFor(
+        cdp,
+        `Boolean(document.querySelector('#lockPublic') && document.querySelector('#lockPublic').classList.contains('lock-blocked'))`,
+        8000
+      )
+      const state = await evaluate(
+        cdp,
+        `(() => {
+          const el = document.querySelector('#lockPublic')
+          return {
+            cls: el ? el.className : '',
+            aria: el ? el.getAttribute('aria-disabled') : '',
+            title: el ? el.getAttribute('title') : '',
+            cursor: el ? getComputedStyle(el).cursor : '',
+            opacity: el ? getComputedStyle(el).opacity : '',
+            current: (document.querySelector('#lock-now') || {}).textContent || ''
+          }
+        })()`
+      )
+      console.log('public option:', JSON.stringify(state))
+      await evaluate(cdp, `(() => { const el = document.querySelector('#lockPublic'); if (el) el.click(); return true })()`)
+      const blockToast = await waitForToast(cdp, /禁用|禁止|disallow|cannot|하지|選択できません/i, 6000)
+      const after = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(['memo_lock'], r))`, { awaitPromise: true })
+      console.log('block toast:', JSON.stringify(blockToast), 'memo_lock:', after.memo_lock)
+      const okBlocked =
+        blocked &&
+        state.aria === 'true' &&
+        Boolean(state.title) &&
+        state.cursor === 'not-allowed' &&
+        Number(state.opacity) < 1 &&
+        stored.disallowPublic === '1' &&
+        after.memo_lock !== 'PUBLIC' &&
+        /禁用|禁止|disallow|cannot|하지|選択できません/i.test(blockToast)
+      if (!okBlocked) {
+        console.log('FAIL public option should be greyed out and refuse selection')
+        process.exitCode = 1
+        return
+      }
+      console.log('PASS public option greyed out with a reason and cannot be selected')
+
+      if (SCREENSHOT) {
+        // Reveal the selector list (without toggling it off) and let the toast
+        // fade so the capture shows the greyed entry itself.
+        await sleep(2400)
+        await evaluate(
+          cdp,
+          `(() => { const w = document.querySelector('#lock-wrapper'); if (w) w.classList.remove('!hidden'); return true })()`
+        )
+        await sleep(400)
+        await cdp.send('Page.enable').catch(() => {})
+        const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
+        fs.writeFileSync(SCREENSHOT, Buffer.from(shot.data, 'base64'))
+        console.log('screenshot:', SCREENSHOT)
+      }
+    }
+
     // --- choose visibility for the failure scenario
     if (SCENARIO === 'public-forbidden') {
       await evaluate(cdp, `(() => { const el = document.querySelector('#lockPublic'); if (el) el.click(); return true })()`)
+    } else if (SCENARIO === 'locked-public') {
+      // Nothing to click: the blocked option must already be refused above.
     } else {
       await evaluate(cdp, `(() => { const el = document.querySelector('#lockPrivate'); if (el) el.click(); return true })()`)
     }
@@ -413,6 +485,16 @@ async function main() {
         ok
           ? `PASS attachment published (${withAttachment[0].name}, attachments=${withAttachment[0].attachments.length})`
           : 'FAIL no memo with an attachment on the server'
+      )
+    } else if (SCENARIO === 'locked-public') {
+      ok =
+        found.length >= 1 &&
+        String(found[0].visibility || '') !== 'PUBLIC' &&
+        /成功|success/i.test(toast)
+      console.log(
+        ok
+          ? `PASS memo published as ${found[0].visibility} while PUBLIC stays blocked`
+          : `FAIL expected a non-public memo and a success toast (visibility=${found[0] && found[0].visibility})`
       )
     } else if (SCENARIO === 'public-forbidden') {
       ok = /禁止发布公开|disallows public/i.test(toast) && found.length === 0

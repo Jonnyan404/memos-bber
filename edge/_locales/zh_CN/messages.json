@@ -223,5 +223,8 @@
    },
    "randomEmpty": {
       "message": "没有可展示的备忘录"
-   }
+   },
+  "lockPublicBlocked": {
+    "message": "服务端已禁用公开备忘录，无法选择“公开”"
+  }
 }

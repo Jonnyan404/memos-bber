@@ -79,6 +79,16 @@ for (const bundle of BUNDLES) {
   check(bundle, 'failures show reason', oper.includes('memoErrorText(') && !/msg\('memoFailed'\)\s*}\)\s*}\s*\)\s*}\s*$/.test(oper))
   check(bundle, 'default visibility is PRIVATE', /memo_lock:\s*'PRIVATE'/.test(oper) && !/memo_lock:\s*'PUBLIC'/.test(oper))
   check(bundle, 'no legacy adapter symbols', !/MemosApi(Modern|V023|V020V021)/.test(oper) && !/memosApi\.(adapter|modern|v0)/.test(html))
+  check(
+    bundle,
+    'public option can be blocked',
+    oper.includes('applyVisibilityPolicy(') &&
+      oper.includes("addClass('lock-blocked')") &&
+      oper.includes("hasClass('lock-blocked')") &&
+      oper.includes('visibilityPolicy(')
+  )
+  const css = exists(path.join(dir, 'css/main.css')) ? read(path.join(dir, 'css/main.css')) : ''
+  check(bundle, 'blocked visibility is styled', css.includes('.item-lock.lock-blocked'))
 
   // every locale must carry the new error strings (English fallback is fine,
   // but a missing key would silently show the raw key name)
@@ -86,7 +96,7 @@ for (const bundle of BUNDLES) {
     const localePath = path.join(dir, '_locales', locale, 'messages.json')
     try {
       const data = JSON.parse(read(localePath))
-      const required = ['errPublicForbidden', 'errApiRemoved', 'errAuth', 'serverVersionLabel']
+      const required = ['errPublicForbidden', 'errApiRemoved', 'errAuth', 'serverVersionLabel', 'lockPublicBlocked']
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))
     } catch (err) {

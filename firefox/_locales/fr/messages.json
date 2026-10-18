@@ -223,5 +223,8 @@
   },
   "randomEmpty": {
     "message": "Aucun mémo à afficher"
+  },
+  "lockPublicBlocked": {
+    "message": "Ce serveur interdit les mémos publics ; « Public » n’est pas sélectionnable"
   }
 }

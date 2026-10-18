@@ -430,6 +430,23 @@
     })
   }
 
+  // 0.15-0.26 expose `disallowPublicVisibility` on the MEMO_RELATED setting
+  // (readable by any signed-in user). 0.27 removed the field, so an absent
+  // field means "not restricted" rather than "unknown".
+  function probeVisibilityPolicy(apiUrl, tokens, callback) {
+    var info = { apiUrl: normalizeApiUrl(apiUrl), apiTokens: tokens }
+    request(info, { path: 'instance/settings/MEMO_RELATED', method: 'GET' }, function (data) {
+      var setting = data && data.memoRelatedSetting ? data.memoRelatedSetting : data
+      var disallow = setting && typeof setting.disallowPublicVisibility === 'boolean'
+        ? setting.disallowPublicVisibility
+        : false
+      if (callback) callback(null, { disallowPublic: disallow, found: Boolean(setting) })
+    }, function (err) {
+      // 404: release without the setting. 401/403: API key cannot read it.
+      if (callback) callback(err, { disallowPublic: null, found: false })
+    })
+  }
+
   function detect(apiUrl, tokens, callback) {
     var info = { apiUrl: normalizeApiUrl(apiUrl), apiTokens: tokens }
     var profilePaths = ['instance/profile', 'status']
@@ -452,15 +469,19 @@
           var cache = detectCache[info.apiUrl] || {}
           cache.era = finalEra
           detectCache[info.apiUrl] = cache
-          callback(null, {
-            version: parsed ? parsed.raw : '',
-            era: era !== ERA_UNKNOWN ? era : finalEra,
-            flavor: flavorOf(era !== ERA_UNKNOWN ? era : finalEra),
-            base: info.apiBase || baseCandidates(info)[0],
-            user: auth.user,
-            userId: auth.userId,
-            userRef: auth.userRef,
-            uiPath: 'memos'
+          // One extra read so the popup can grey out what the server forbids.
+          probeVisibilityPolicy(apiUrl, tokens, function (err2, policy) {
+            callback(null, {
+              version: parsed ? parsed.raw : '',
+              era: era !== ERA_UNKNOWN ? era : finalEra,
+              flavor: flavorOf(era !== ERA_UNKNOWN ? era : finalEra),
+              base: info.apiBase || baseCandidates(info)[0],
+              user: auth.user,
+              userId: auth.userId,
+              userRef: auth.userRef,
+              uiPath: 'memos',
+              disallowPublic: policy && typeof policy.disallowPublic === 'boolean' ? policy.disallowPublic : null
+            })
           })
         })
       })
@@ -1087,6 +1108,15 @@
       },
       uploadFile: function (file, options, success, fail) {
         uploadFile(info, file, options, success, fail)
+      },
+      visibilityPolicy: function (success, fail) {
+        probeVisibilityPolicy(info.apiUrl, info.apiTokens, function (err, policy) {
+          if (err && (err.kind === 'network' || err.kind === 'server')) {
+            if (fail) fail(err)
+            return
+          }
+          success(policy || { disallowPublic: null, found: false })
+        })
       }
     }
   }
@@ -1118,6 +1148,7 @@
       return value
     },
     detect: detect,
+    probeVisibilityPolicy: probeVisibilityPolicy,
     authenticate: authenticate,
     probeFlavor: probeFlavor,
     resolve: resolve,

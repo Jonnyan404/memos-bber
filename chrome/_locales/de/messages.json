@@ -223,5 +223,8 @@
   },
   "randomEmpty": {
     "message": "Kein Memo vorhanden"
+  },
+  "lockPublicBlocked": {
+    "message": "Dieser Server verbietet öffentliche Memos; „Öffentlich“ ist nicht wählbar"
   }
 }

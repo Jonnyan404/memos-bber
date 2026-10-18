@@ -223,5 +223,8 @@
   },
   "randomEmpty": {
     "message": "表示できるメモがありません"
+  },
+  "lockPublicBlocked": {
+    "message": "このサーバーは公開メモを禁止しているため「公開」は選択できません"
   }
 }

@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const ADAPTER = path.join(ROOT, 'chrome/js/compat/memosApi.js')
-const PORT = 15400
+const PORT = Number(process.env.MATRIX_PORT || 15400)
 const BASE_URL = `http://127.0.0.1:${PORT}`
 const USER = 'tester'
 const PASS = 'Passw0rd!123'
@@ -43,6 +43,9 @@ const ONLY = (() => {
   return i >= 0 ? argv[i + 1].split(',') : null
 })()
 const KEEP = argv.includes('--keep')
+// `--disallow-public` turns on the 0.15-0.26 "no public memos" setting so the
+// adapter's visibility policy can be checked in the blocked direction too.
+const DISALLOW_PUBLIC = argv.includes('--disallow-public')
 
 const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts })
@@ -288,6 +291,19 @@ function callWith(method) {
 
 // --------------------------------------------------------------------- checks
 
+async function enableDisallowPublic(token, base) {
+  const patch = `${BASE_URL}/${base}instance/settings/MEMO_RELATED?updateMask=memoRelatedSetting`
+  const resp = await fetch(patch, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'instance/settings/MEMO_RELATED',
+      memoRelatedSetting: { disallowPublicVisibility: true, contentLengthLimit: 8192 }
+    })
+  }).catch(() => null)
+  return Boolean(resp && resp.ok)
+}
+
 async function runVersion(version) {
   const report = { version, checks: [], notes: [] }
   const name = await startContainer(version)
@@ -321,6 +337,10 @@ async function runVersion(version) {
       userRef: detected.userRef,
       apiFlavor: detected.flavor
     }
+    if (DISALLOW_PUBLIC) {
+      await enableDisallowPublic(session.token, detected.base)
+    }
+
     const api = A.resolve(info)
 
     const stamp = 'probe-' + Date.now()
@@ -328,6 +348,23 @@ async function runVersion(version) {
       api.createMemo({ content: `adapter check ${stamp} #verifytag`, visibility: 'PRIVATE', resourceIdList: [] }, ok, bad)
     )
     report.checks.push({ name: 'createMemo', ok: Boolean(created && created.content), detail: A.memoRef(created) })
+
+    // The greyed-out PUBLIC option must follow reality: claim "allowed" only
+    // when the server really accepts PUBLIC, claim "blocked" only when it 403s.
+    let publicError = null
+    await callWith((ok, bad) => api.createMemo({ content: `public probe ${stamp}`, visibility: 'PUBLIC' }, ok, bad)).catch(
+      (err) => {
+        publicError = err
+      }
+    )
+    const forbidden = Boolean(publicError && publicError.status === 403)
+    const policy = await callWith((ok, bad) => api.visibilityPolicy(ok, bad)).catch(() => ({ disallowPublic: null }))
+    const policyOk = forbidden ? policy && policy.disallowPublic === true : !policy || policy.disallowPublic !== true
+    report.checks.push({
+      name: 'visibilityPolicy',
+      ok: policyOk,
+      detail: `server ${forbidden ? 'blocks' : 'allows'} public, adapter says ${policy ? policy.disallowPublic : 'unknown'}`
+    })
 
     const tags = await callWith((ok, bad) => api.listTags(ok, bad))
     report.checks.push({ name: 'listTags', ok: Array.isArray(tags) && tags.indexOf('verifytag') !== -1, detail: (tags || []).slice(0, 6).join(',') })

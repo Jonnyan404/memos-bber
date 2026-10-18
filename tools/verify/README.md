@@ -67,6 +67,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `public-forbidden` | 服务端禁用公开时，toast 指出具体原因且不产生 memo |
 | `invalid-token` | 保存阶段即提示令牌无效/URL 错误，不写入设置 |
 | `upload` | 通过真实文件选择框上传 PNG，空正文发送后服务端 memo 带 1 个附件 |
+| `locked-public` | 服务端禁用公开时，「公开」置灰（`not-allowed` + 透明度 + tooltip），点击只弹原因、不改变选择，正文仍以 PRIVATE 发出 |
 
 ## 4. 它做了什么 / 坑
 
@@ -115,7 +116,24 @@ FIREFOX_PATH="/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox
 因此 Firefox 的弹窗交互目前只能手工验证：
 `web-ext run --source-dir firefox` 后点扩展图标。逻辑层由三端字节一致的 adapter + 16 版本矩阵覆盖。
 
-## 8. 纯函数单测
+## 8. 可见性策略（禁止公开备忘录）
+
+Memos 0.15–0.26 有 `disallowPublicVisibility`（0.27 起移除）。适配层用
+`GET instance/settings/MEMO_RELATED` 读取它（普通用户令牌也能读），结果存进
+`chrome.storage.sync.disallowPublic`；`oper.js` 据此给 `#lockPublic` 加 `lock-blocked`。
+
+```bash
+# 带限制的适配层断言（会自己开 0.26.1 容器并在容器内打开设置）
+node tools/verify/memos-api-matrix.mjs --only 0.26.1 --disallow-public
+
+# 真实弹窗：置灰 + 拒绝点击 + 仍能发私有
+node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15402/ --token "$TOKEN" --scenario locked-public
+```
+
+矩阵里的 `visibilityPolicy` 项对每个版本做双向断言：服务端真能收 PUBLIC 时适配层不得说
+「被禁」，服务端 403 时必须说「被禁」。矩阵端口可用 `MATRIX_PORT` 覆盖（默认 15400）。
+
+## 9. 纯函数单测
 
 `node tools/verify/unit.mjs` 覆盖 `parseVersion / eraOfVersion / memoRef / errorInfo / extractTags / normalizeResource`，
 不需要 Docker，CI 的 bundle job 会跑。

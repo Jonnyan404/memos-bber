@@ -223,5 +223,8 @@
   },
   "randomEmpty": {
     "message": "표시할 메모가 없습니다"
+  },
+  "lockPublicBlocked": {
+    "message": "이 서버는 공개 메모를 금지하므로 ‘공개’를 선택할 수 없습니다"
   }
 }
