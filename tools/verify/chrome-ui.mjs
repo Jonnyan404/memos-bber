@@ -265,12 +265,28 @@ async function waitForToast(cdp, pattern, timeoutMs = 8000) {
   return last
 }
 
-async function readToast(cdp, timeoutMs = 12000) {
+// Toasts linger ~2s. Waiting for the previous one to clear is what stops a
+// stale message being read as the outcome of the next action: the settings
+// save confirmation also ends in "Success".
+async function waitForToastToClear(cdp, timeoutMs = 4000) {
+  await waitFor(
+    cdp,
+    `(() => {
+      const el = document.querySelector('.tip-info')
+      return !el || !String(el.textContent || '').trim()
+    })()`,
+    timeoutMs
+  )
+}
+
+// `exclude` guards against the same class of mistake: a leftover toast whose
+// text happens to match the pattern we are waiting for.
+async function readToast(cdp, timeoutMs = 12000, exclude = null) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const text = await evaluate(cdp, `(document.querySelector('.tip-info') || {}).textContent || ''`).catch(() => '')
     // Skip the transient "sending" toast, keep the final outcome.
-    if (text && !/发送中|Sending/i.test(text)) return text
+    if (text && !/发送中|Sending/i.test(text) && !(exclude && exclude.test(text))) return text
     await sleep(200)
   }
   return ''
@@ -940,6 +956,7 @@ async function main() {
     }
 
     // --- send a memo through the real UI
+    await waitForToastToClear(cdp)
     await evaluate(
       cdp,
       `(() => {
@@ -951,7 +968,9 @@ async function main() {
       })()`
     )
 
-    const toast = await readToast(cdp)
+    // The save toast says "Success" too, so it must not be mistaken for the
+    // send result if it ever outlives the wait above.
+    const toast = await readToast(cdp, 12000, /保存信息|Save Info/i)
     console.log('toast:', JSON.stringify(toast))
 
     const memos = await serverMemos()

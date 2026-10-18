@@ -86,6 +86,10 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 - `chrome.storage` 是回调式 API：在 `Runtime.evaluate` 里返回 Promise 时必须传
   `awaitPromise: true`，否则拿到 Promise 对象会被误判为“已保存”。
 - 设置保存会先探测服务端版本，冷启动容器可能让首次请求失败；脚本会自动重点一次保存。
+- **toast 会残留约 2 秒**：「保存信息成功 / Save Info Success」同样以「Success」结尾，如果发送时
+  它还没消失，`readToast` 会把它当成发送结果（CI 上真实出现过：fullscreen job 红在
+  「memo not found」）。所以发送前先 `waitForToastToClear()` 等上一条消失，
+  `readToast(cdp, timeout, /保存信息|Save Info/i)` 再把保存文案排除掉——两层保险。
 
 ## 5. 版本号、静态检查与 CI
 
