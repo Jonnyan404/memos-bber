@@ -93,11 +93,15 @@ class Cdp {
     })
   }
 
-  send(method, params = {}) {
+  // `sessionId` is only used in flatten mode (browser endpoint attaching to a
+  // worker/page): /json/list does not expose service workers on Linux.
+  send(method, params = {}, sessionId) {
     return new Promise((resolve, reject) => {
       const id = ++this.id
       this.pending.set(id, { resolve, reject })
-      this.ws.send(JSON.stringify({ id, method, params }))
+      const payload = { id, method, params }
+      if (sessionId) payload.sessionId = sessionId
+      this.ws.send(JSON.stringify(payload))
     })
   }
 
@@ -137,29 +141,64 @@ async function main() {
 
   try {
     const id = extensionId(EXT_DIR)
-    let target = null
-    for (let i = 0; i < 40 && !target; i++) {
+
+    // Browser-level endpoint: a service worker is not listed by /json/list on
+    // every platform, but Target.getTargets always sees it.
+    let version = null
+    for (let i = 0; i < 40 && !version; i++) {
       await sleep(300)
       try {
-        const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
-        target = list.find((t) => t.type === 'service_worker' && t.url.includes(id))
+        version = await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json()
       } catch (_) {
         /* not up yet */
       }
     }
-    if (!target) throw new Error('service worker target never appeared')
+    if (!version || !version.webSocketDebuggerUrl) throw new Error('browser endpoint never appeared')
 
-    cdp = new Cdp(target.webSocketDebuggerUrl)
+    cdp = new Cdp(version.webSocketDebuggerUrl)
     await cdp.ready
-    await cdp.send('Runtime.enable')
+    await cdp.send('Target.setDiscoverTargets', { discover: true })
+
+    const findWorker = async () => {
+      const { targetInfos } = await cdp.send('Target.getTargets')
+      return (targetInfos || []).find((t) => t.type === 'service_worker' && t.url.includes(id))
+    }
+
+    let target = await findWorker()
+    if (!target) {
+      // The worker is lazy: open the popup and send a message so Chrome has to
+      // start it, exactly like a real browser would on the first event.
+      const { targetId } = await cdp.send('Target.createTarget', {
+        url: `chrome-extension://${id}/popup.html`
+      })
+      const attached = await cdp.send('Target.attachToTarget', { targetId, flatten: true })
+      await cdp.send('Runtime.enable', {}, attached.sessionId)
+      await cdp.send(
+        'Runtime.evaluate',
+        {
+          expression: `chrome.runtime.sendMessage({ type: 'memos-bber:wake' }, () => void chrome.runtime.lastError)`,
+          awaitPromise: false
+        },
+        attached.sessionId
+      )
+      for (let i = 0; i < 40 && !target; i++) {
+        await sleep(250)
+        target = await findWorker()
+      }
+    }
+    if (!target) throw new Error('service worker target never appeared even after a wake message')
+
+    const attached = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true })
+    const sessionId = attached.sessionId
+    await cdp.send('Runtime.enable', {}, sessionId)
     await sleep(600)
 
     const evaluate = async (expression) => {
-      const res = await cdp.send('Runtime.evaluate', {
-        expression,
-        awaitPromise: true,
-        returnByValue: true
-      })
+      const res = await cdp.send(
+        'Runtime.evaluate',
+        { expression, awaitPromise: true, returnByValue: true },
+        sessionId
+      )
       if (res.exceptionDetails) {
         throw new Error(res.exceptionDetails.text || JSON.stringify(res.exceptionDetails).slice(0, 200))
       }
@@ -210,7 +249,9 @@ async function main() {
     })`)
     check('badge can be cleared', badge === 'ok', badge)
 
-    const exceptions = cdp.events.filter((e) => e.method === 'Runtime.exceptionThrown')
+    const exceptions = cdp.events.filter(
+      (e) => e.method === 'Runtime.exceptionThrown' && (!e.sessionId || e.sessionId === sessionId)
+    )
     check('no runtime exceptions', exceptions.length === 0, String(exceptions.length))
   } finally {
     if (cdp) cdp.close()
