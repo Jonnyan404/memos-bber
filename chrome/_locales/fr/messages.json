@@ -98,6 +98,21 @@
   "picFailed": {
     "message": "Échec du téléversement"
   },
+  "uploadProgressLabel": {
+    "message": "Téléversement"
+  },
+  "uploadPreparing": {
+    "message": "Préparation"
+  },
+  "uploadFailed": {
+    "message": "Échec du téléversement"
+  },
+  "uploadRetry": {
+    "message": "Réessayer"
+  },
+  "uploadBusy": {
+    "message": "Une pièce jointe est encore en cours de téléversement. Veuillez patienter."
+  },
   "picPending": {
     "message": "Le téléversement de l'image est en cours"
   },

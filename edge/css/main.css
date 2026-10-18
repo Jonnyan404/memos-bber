@@ -192,6 +192,7 @@ a{color: #555;}
 .body.fullscreen > #blog_info,
 .body.fullscreen > .memo-editor,
 .body.fullscreen > .common-tools-wrapper,
+.body.fullscreen > .upload-progress,
 .body.fullscreen > .upload-list-wrapper,
 .body.fullscreen > .tag-list,
 .body.fullscreen > .tag-hide,
@@ -245,6 +246,7 @@ a{color: #555;}
 }
 
 .body.fullscreen .common-tools-wrapper,
+.body.fullscreen .upload-progress,
 .body.fullscreen .upload-list-wrapper,
 .body.fullscreen .tag-list,
 .body.fullscreen .tag-hide,
@@ -382,6 +384,74 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .upload-del:hover{
     opacity: 1;
     background-color: rgb(243,244,246);
+}
+/* Upload progress: one bar for the whole batch, plus a retry affordance that
+   only appears when something failed. */
+.upload-progress{
+    margin-top: .5rem;
+}
+.upload-progress[hidden]{
+    display: none;
+}
+.upload-progress-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .25rem;
+    min-height: 1.25rem;
+}
+.upload-progress-label{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .8125rem;
+    color: #666;
+}
+.upload-progress-retry{
+    flex: 0 0 auto;
+    cursor: pointer;
+    font-size: .8125rem;
+    color: #2563eb;
+    background-color: transparent;
+    padding: .1rem .35rem;
+    border-radius: .25rem;
+}
+.upload-progress-retry:hover{
+    background-color: rgb(243,244,246);
+}
+.upload-progress-retry[hidden]{
+    display: none;
+}
+.upload-progress.is-failed .upload-progress-label{
+    color: #a32d2d;
+}
+.upload-progress-track{
+    height: 4px;
+    border-radius: 999px;
+    background-color: rgb(229,231,235);
+    overflow: hidden;
+}
+.upload-progress-bar{
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background-color: #111827;
+    transition: width .15s linear;
+}
+/* Base64 encoding reports no bytes, so the bar sweeps instead of pretending. */
+.upload-progress.is-indeterminate .upload-progress-bar{
+    transition: none;
+    animation: upload-progress-sweep 1.1s ease-in-out infinite;
+}
+@keyframes upload-progress-sweep{
+    0%{ transform: translateX(-100%); }
+    100%{ transform: translateX(285%); }
+}
+@media (prefers-reduced-motion: reduce){
+    .upload-progress-bar{ transition: none; }
+    .upload-progress.is-indeterminate .upload-progress-bar{ animation: none; }
 }
 .common-tools-container {
     display: flex;

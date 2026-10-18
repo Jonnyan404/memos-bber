@@ -649,9 +649,16 @@ window.addEventListener('i18n:changed', (ev) => {
   applyDayjsLocaleByUiLanguage(ev && ev.detail ? ev.detail.lang : 'auto')
   updateLockNowText(currentMemoLock)
   renderUploadList(pendingAttachments)
+  renderUploadProgress()
 })
 
 let pendingAttachments = []
+
+// In-flight uploads. Deliberately transient: a resumed draft only cares about
+// attachments that already have a server name, so jobs never reach storage.
+const uploadJobs = []
+let uploadBatch = null
+let progressFrame = 0
 
 const DEFAULT_ATTACHMENT_ONLY_TEXT = '#附件 此为默认填充,如需自定义,请在发送附件前填写你的文本内容或者设置项里自定义.'
 
@@ -812,7 +819,7 @@ document.addEventListener('paste', function (e) {
   }
 
   if (photo != null) {
-    uploadImage(photo)
+    uploadFiles([photo])
   }
 })
 
@@ -925,12 +932,17 @@ function uploadFiles(files) {
     return
   }
 
+  beginUploadBatch(usable)
+
   let index = 0
   const next = function () {
     if (index >= usable.length) {
       if (skipped > 0) {
         $.message({ message: msg('picDropSkipped') })
       }
+      // Failures stay on screen so they can be retried; a clean batch collapses.
+      if (uploadJobs.length === 0) endUploadBatch()
+      else renderUploadProgress()
       return
     }
     const file = usable[index++]
@@ -1340,16 +1352,152 @@ function setUploading(value) {
   }
 }
 
+// ------------------------------------------------------------- upload progress
+//
+// Progress is byte-based over the whole batch, so the percentage and the "3/5"
+// counter always describe the same thing. Jobs only live in memory; the bar is
+// rendered at most once per frame because a large upload fires progress events
+// far more often than the screen refreshes.
+
+function beginUploadBatch(files) {
+  const items = Array.isArray(files) ? files : []
+  // Leftover failures belong to the previous batch; a new upload replaces them.
+  for (let i = uploadJobs.length - 1; i >= 0; i--) {
+    if (uploadJobs[i].state === 'failed') uploadJobs.splice(i, 1)
+  }
+  let totalBytes = 0
+  for (let i = 0; i < items.length; i++) {
+    totalBytes += items[i] && items[i].size ? items[i].size : 0
+  }
+  uploadBatch = {
+    totalFiles: items.length,
+    startedFiles: 0,
+    totalBytes: totalBytes,
+    finishedBytes: 0,
+    failedBytes: 0
+  }
+}
+
+function endUploadBatch() {
+  uploadBatch = null
+  uploadJobs.length = 0
+  renderUploadProgress()
+}
+
+function scheduleProgressRender() {
+  if (progressFrame) return
+  progressFrame = requestAnimationFrame(function () {
+    progressFrame = 0
+    renderUploadProgress()
+  })
+}
+
+function uploadOverallPercent() {
+  const batch = uploadBatch
+  if (!batch) return 0
+  const denominator = batch.totalBytes - batch.failedBytes
+  if (denominator <= 0) return 0
+  let loaded = batch.finishedBytes
+  for (let i = 0; i < uploadJobs.length; i++) {
+    const job = uploadJobs[i]
+    if (job.state === 'failed' || !job.size) continue
+    loaded += (job.size * (job.percent || 0)) / 100
+  }
+  return Math.max(0, Math.min(100, Math.round((loaded / denominator) * 100)))
+}
+
+function renderUploadProgress() {
+  const box = document.getElementById('upload-progress')
+  if (!box) return
+  const bar = document.getElementById('upload-progress-bar')
+  const label = document.getElementById('upload-progress-label')
+  const retry = document.getElementById('upload-progress-retry')
+
+  if (uploadJobs.length === 0) {
+    box.hidden = true
+    box.classList.remove('is-indeterminate')
+    box.classList.remove('is-failed')
+    if (bar) bar.style.width = '0%'
+    if (label) label.textContent = ''
+    if (retry) retry.hidden = true
+    return
+  }
+
+  let failedCount = 0
+  let activeCount = 0
+  let preparing = false
+  for (let i = 0; i < uploadJobs.length; i++) {
+    const state = uploadJobs[i].state
+    if (state === 'failed') failedCount += 1
+    else {
+      activeCount += 1
+      if (state === 'preparing') preparing = true
+    }
+  }
+
+  box.hidden = false
+  box.classList.toggle('is-indeterminate', preparing)
+  box.classList.toggle('is-failed', activeCount === 0 && failedCount > 0)
+
+  const percent = uploadOverallPercent()
+  if (bar) bar.style.width = preparing ? '35%' : percent + '%'
+  box.setAttribute('aria-valuenow', String(preparing ? 0 : percent))
+
+  if (label) {
+    if (activeCount === 0) {
+      label.textContent = msg('uploadFailed') + ' · ' + failedCount
+    } else {
+      const total = uploadBatch ? uploadBatch.totalFiles : activeCount
+      const index = uploadBatch ? Math.min(uploadBatch.startedFiles, total) : 1
+      label.textContent = preparing
+        ? msg('uploadPreparing') + ' · ' + index + '/' + total
+        : msg('uploadProgressLabel') + ' · ' + index + '/' + total + ' · ' + percent + '%'
+    }
+  }
+
+  if (retry) {
+    retry.hidden = failedCount === 0
+    retry.textContent = msg('uploadRetry')
+  }
+}
+
+function createUploadJob(file) {
+  return {
+    // The File is kept only so a failed job can be retried without re-picking it.
+    file: file,
+    size: file && file.size ? file.size : 0,
+    percent: 0,
+    state: 'preparing'
+  }
+}
+
 function uploadImage(file, done) {
+  const job = createUploadJob(file)
+  uploadJobs.push(job)
+  if (uploadBatch) uploadBatch.startedFiles += 1
+  renderUploadProgress()
+
   const finish = function (err) {
     setUploading(false)
     if (typeof done === 'function') done(err)
   }
+
+  // A failed job stays in the list so the retry button has something to act on.
+  const settle = function (ok) {
+    if (uploadBatch) {
+      if (ok) uploadBatch.finishedBytes += job.size
+      else uploadBatch.failedBytes += job.size
+    }
+    if (ok) {
+      const index = uploadJobs.indexOf(job)
+      if (index !== -1) uploadJobs.splice(index, 1)
+    } else {
+      job.state = 'failed'
+    }
+    renderUploadProgress()
+  }
+
   setUploading(true)
-  $.message({
-    message: msg('picUploading'),
-    autoClose: false
-  });
   get_info(function (info) {
     const adapter = getApiAdapter(info)
     adapter.uploadFile(
@@ -1358,7 +1506,17 @@ function uploadImage(file, done) {
         editorContent: $("textarea[name=text]").val(),
         hideTag: info.hidetag,
         showTag: info.showtag,
-        memoLock: info.memo_lock
+        memoLock: info.memo_lock,
+        onProgress: function (loaded, total) {
+          // total === 0 means "encoding, no bytes on the wire yet".
+          if (!total) {
+            job.state = 'preparing'
+          } else {
+            job.state = 'uploading'
+            job.percent = Math.max(0, Math.min(100, Math.round((loaded / total) * 100)))
+          }
+          scheduleProgressRender()
+        }
       },
       function (entity) {
         if (entity) {
@@ -1368,6 +1526,7 @@ function uploadImage(file, done) {
           chrome.storage.sync.set(
             { open_action: '', open_content: $("textarea[name=text]").val(), resourceIdList: pendingAttachments },
             function () {
+              settle(true)
               $.message({ message: msg('picSuccess') })
               renderUploadList(pendingAttachments)
               finish(null)
@@ -1378,6 +1537,7 @@ function uploadImage(file, done) {
         chrome.storage.sync.set(
           { open_action: '', open_content: $("textarea[name=text]").val() },
           function () {
+            settle(false)
             $.message({ message: msg('picFailed') })
             finish({ kind: 'client', status: 0, message: 'upload failed' })
           }
@@ -1387,6 +1547,7 @@ function uploadImage(file, done) {
         chrome.storage.sync.set(
           { open_action: '', open_content: $("textarea[name=text]").val() },
           function () {
+            settle(false)
             $.message({ message: memoErrorText(err) })
             finish(err)
           }
@@ -1395,6 +1556,14 @@ function uploadImage(file, done) {
     )
   })
 };
+
+$(document).on('click', '#upload-progress-retry', function () {  const files = []
+  for (let i = 0; i < uploadJobs.length; i++) {
+    if (uploadJobs[i].state === 'failed' && uploadJobs[i].file) files.push(uploadJobs[i].file)
+  }
+  if (files.length === 0) return
+  uploadFiles(files)
+})
 
 function buildCustomSettingsPayload() {
   return {
@@ -1692,7 +1861,9 @@ $('#inFile').on('change', function(data){
     return;
   }
   file= this.files[0];
-  uploadImage(file)
+  if (file) uploadFiles([file])
+  // Allow picking the same file again after a failure.
+  $('#inFile').val('')
 });
 
 function insertIntoDraft(str) {
@@ -1710,6 +1881,16 @@ $('#blog_info_edit').click(function () {
 })
 
 $('#content_submit_text').click(function () {
+  // Sending while an upload is in flight used to drop that attachment: the memo
+  // was created from a list that did not include it yet, and the file landed as
+  // an orphan afterwards.
+  const busy = uploadJobs.some(function (job) {
+    return job.state !== 'failed'
+  })
+  if (busy) {
+    $.message({ message: msg('uploadBusy') })
+    return
+  }
   var contentVal = $("textarea[name=text]").val()
   var contentToSend = resolveSendContent(
     contentVal,

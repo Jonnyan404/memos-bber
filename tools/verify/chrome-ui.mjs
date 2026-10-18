@@ -292,13 +292,83 @@ async function readToast(cdp, timeoutMs = 12000, exclude = null) {
   return ''
 }
 
-async function serverMemos() {
-  const resp = await fetch(URL_BASE + 'api/v1/memos?pageSize=20', {
-    headers: { Authorization: 'Bearer ' + TOKEN }
-  })
-  const data = await resp.json().catch(() => ({}))
-  return Array.isArray(data.memos) ? data.memos : []
+let cachedUserRef = null
+async function currentUserRef() {
+  if (cachedUserRef !== null) return cachedUserRef
+  const attempts = [
+    ['GET', 'api/v1/auth/me'],
+    ['GET', 'api/auth/me'],
+    ['POST', 'api/v1/auth/status'],
+    ['POST', 'api/auth/status'],
+    ['GET', 'api/v1/user/me'],
+    ['GET', 'api/user/me']
+  ]
+  for (const [method, p] of attempts) {
+    try {
+      const resp = await fetch(URL_BASE + p, { method, headers: { Authorization: 'Bearer ' + TOKEN } })
+      if (!resp.ok) continue
+      const data = await resp.json()
+      const user = (data && data.user) || data || {}
+      const name = String(user.name || '')
+      if (name.indexOf('users/') === 0) {
+        cachedUserRef = name
+        return name
+      }
+      if (user.username) {
+        cachedUserRef = 'users/' + user.username
+        return cachedUserRef
+      }
+      if (user.id != null) {
+        cachedUserRef = 'users/' + user.id
+        return cachedUserRef
+      }
+    } catch (_) {
+      /* try the next shape */
+    }
+  }
+  cachedUserRef = ''
+  return ''
 }
+
+async function serverMemos() {
+  // 0.23/0.24 hide PRIVATE memos from the plain list, so the creator filter is
+  // what actually sees the memo this test just sent. Every path is merged:
+  // some builds answer 200 with an empty array for filters they only partly
+  // understand, and stopping at the first answer would hide the memo.
+  const ref = await currentUserRef()
+  const paths = []
+  if (ref) {
+    // 0.24 applies its creator filter to public memos only, so the user-scoped
+    // collection is the reliable way to see what this test just sent.
+    const tail = ref.split('/').pop()
+    paths.push(`api/v1/users/${tail}/memos?pageSize=20`, `api/users/${tail}/memos?pageSize=20`)
+    paths.push(`api/v1/memos?pageSize=20&filter=${encodeURIComponent('creator == ' + JSON.stringify(ref))}`)
+  }
+  // 0.22+ list at /api/v1/memos and wrap the array in `memos`; 0.15-0.21 use
+  // the singular /api/v1/memo and return a bare array; 26.10+ drop the /v1.
+  paths.push('api/v1/memos?pageSize=20', 'api/memos?pageSize=20', 'api/v1/memo?limit=20')
+
+  const seen = new Map()
+  for (const p of paths) {
+    let data = null
+    try {
+      const resp = await fetch(URL_BASE + p, { headers: { Authorization: 'Bearer ' + TOKEN } })
+      if (!resp.ok) continue
+      data = await resp.json()
+    } catch (_) {
+      continue
+    }
+    const list = Array.isArray(data) ? data : data && Array.isArray(data.memos) ? data.memos : null
+    if (!list) continue
+    for (const memo of list) seen.set(String(memo.name || memo.id), memo)
+  }
+  return [...seen.values()]
+}
+
+// The field carrying attachments is renamed twice: resourceList (0.15-0.21),
+// resources (0.22-0.24), attachments (0.25+).
+const attachmentsOf = (memo) => (memo && (memo.attachments || memo.resources || memo.resourceList)) || []
+
 
 async function main() {
   const chrome = findChrome()
@@ -618,7 +688,42 @@ async function main() {
 
     if (SCENARIO === 'upload') {
       const png = path.join(os.tmpdir(), `memos-upload-${Date.now()}.png`)
-      fs.writeFileSync(png, Buffer.from(PNG_BASE64, 'base64'))
+      // Pad the icon so the upload spans several progress events; a 2 KB file
+      // finishes in one event and would make the bar assertions flaky.
+      const icon = Buffer.from(PNG_BASE64, 'base64')
+      fs.writeFileSync(png, Buffer.concat([icon, Buffer.alloc(3 * 1024 * 1024, 7)]))
+
+      // The upload is over in a few hundred milliseconds, so the bar cannot be
+      // sampled from the outside: record every state it passes through.
+      const instrumented = await evaluate(
+        cdp,
+        `(() => {
+          const box = document.getElementById('upload-progress')
+          const bar = document.getElementById('upload-progress-bar')
+          const label = document.getElementById('upload-progress-label')
+          if (!box || !bar || !label) return false
+          const seen = { visible: false, labels: [], widths: [], barHeight: 0, barWidth: 0 }
+          window.__uploadProgress = seen
+          const snap = () => {
+            if (box.hidden) return
+            seen.visible = true
+            if (label.textContent) seen.labels.push(label.textContent)
+            if (bar.style.width) seen.widths.push(bar.style.width)
+            const rect = bar.getBoundingClientRect()
+            if (rect.height > seen.barHeight) seen.barHeight = rect.height
+            if (rect.width > seen.barWidth) seen.barWidth = rect.width
+          }
+          new MutationObserver(snap).observe(box, {
+            attributes: true,
+            subtree: true,
+            childList: true,
+            characterData: true
+          })
+          return true
+        })()`
+      )
+      if (!instrumented) throw new Error('upload progress elements not found')
+
       await cdp.send('DOM.enable')
       const doc = await cdp.send('DOM.getDocument', { depth: -1 })
       const input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#inFile' })
@@ -631,6 +736,107 @@ async function main() {
       )
       if (!uploaded) throw new Error('attachment was not uploaded')
       console.log('attachment uploaded through the real file input')
+
+      const progress = await evaluate(cdp, 'window.__uploadProgress')
+      const counted = (progress?.labels || []).some((text) => /\d+\/\d+/.test(text))
+      const percentage = (progress?.widths || []).some((width) => /^\d+%$/.test(width) && width !== '0%')
+      // The bar must actually be painted: a zero-height track would still pass
+      // the style-only assertions above.
+      const painted = (progress?.barHeight || 0) >= 3 && (progress?.barWidth || 0) > 0
+      const okProgress = Boolean(progress?.visible) && counted && percentage && painted
+      console.log(
+        okProgress
+          ? 'PASS upload progress bar appeared, painted, with a counter and a byte-based percentage'
+          : 'FAIL upload progress bar never rendered a counter, a percentage or any pixels'
+      )
+      if (!okProgress) {
+        console.log('  observed: ' + JSON.stringify(progress))
+        process.exitCode = 1
+      }
+
+      const collapsed = await waitFor(cdp, `document.getElementById('upload-progress').hidden === true`, 5000)
+      console.log(
+        collapsed
+          ? 'PASS progress bar collapses once the batch is done'
+          : 'FAIL progress bar stayed visible after the batch finished'
+      )
+      if (!collapsed) process.exitCode = 1
+    }
+
+    if (SCENARIO === 'preview') {
+      // Upload the real 1x1 PNG (not the padded one): the card must decode the
+      // exact bytes the server stored, so a broken stream URL shows up as a
+      // zero-sized image instead of silently rendering a placeholder.
+      const png = path.join(os.tmpdir(), `memos-preview-${Date.now()}.png`)
+      fs.writeFileSync(png, Buffer.from(PNG_BASE64, 'base64'))
+
+      await cdp.send('DOM.enable')
+      const doc = await cdp.send('DOM.getDocument', { depth: -1 })
+      const input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#inFile' })
+      if (!input.nodeId) throw new Error('file input not found')
+      await cdp.send('DOM.setFileInputFiles', { files: [png], nodeId: input.nodeId })
+
+      const uploaded = await waitFor(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length > 0)))`,
+        20000
+      )
+      if (!uploaded) throw new Error('attachment was not uploaded')
+      console.log('attachment uploaded for the preview scenario')
+    }
+
+    if (SCENARIO === 'upload-fail') {
+      const png = path.join(os.tmpdir(), `memos-upload-fail-${Date.now()}.png`)
+      fs.writeFileSync(png, Buffer.from(PNG_BASE64, 'base64'))
+
+      await cdp.send('DOM.enable')
+      const doc = await cdp.send('DOM.getDocument', { depth: -1 })
+      const input = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#inFile' })
+      if (!input.nodeId) throw new Error('file input not found')
+
+      // Settings are already saved, so going offline now only breaks the upload.
+      await cdp.send('Network.enable')
+      const offline = (value) =>
+        cdp.send('Network.emulateNetworkConditions', {
+          offline: value,
+          latency: 0,
+          downloadThroughput: -1,
+          uploadThroughput: -1
+        })
+
+      await offline(true)
+      await cdp.send('DOM.setFileInputFiles', { files: [png], nodeId: input.nodeId })
+
+      const failed = await waitFor(
+        cdp,
+        `(() => {
+          const box = document.getElementById('upload-progress')
+          const retry = document.getElementById('upload-progress-retry')
+          return Boolean(box && !box.hidden && retry && !retry.hidden)
+        })()`,
+        20000
+      )
+      console.log(
+        failed ? 'PASS failed upload keeps a retry affordance' : 'FAIL no retry affordance after a failed upload'
+      )
+      if (!failed) {
+        process.exitCode = 1
+        await offline(false)
+        return
+      }
+
+      await offline(false)
+      await evaluate(cdp, `(() => { document.getElementById('upload-progress-retry').click(); return true })()`)
+
+      const recovered = await waitFor(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length > 0)))`,
+        20000
+      )
+      console.log(
+        recovered ? 'PASS retry uploaded the file once the network came back' : 'FAIL retry did not upload the file'
+      )
+      if (!recovered) process.exitCode = 1
     }
 
     if (SCENARIO === 'locked-public') {
@@ -979,17 +1185,77 @@ async function main() {
     let ok = false
     if (SCENARIO === 'drop-multi') {
       const target = memos.filter((m) => String(m.content || '').indexOf(TEXT) !== -1)
-      const count = target.length ? (target[0].attachments || []).length : 0
+      const count = target.length ? attachmentsOf(target[0]).length : 0
       ok = count >= 2
       console.log(ok ? `PASS memo carries ${count} attachments` : 'FAIL memo did not carry both attachments')
+    } else if (SCENARIO === 'preview') {
+      // The card fetches the attachment with the bearer token and swaps in a
+      // blob: URL. A stream URL that is wrong for the detected era shows up
+      // here as naturalWidth 0, which is exactly what a user would see as a
+      // broken image.
+      const loaded = await waitFor(
+        cdp,
+        `(() => {
+          const img = document.querySelector('#randomlist img.random-image')
+          if (!img || !img.complete) return false
+          return img.naturalWidth > 0 && img.naturalHeight > 0 && String(img.src).indexOf('blob:') === 0
+        })()`,
+        20000
+      )
+      const detail = await evaluate(
+        cdp,
+        `(() => {
+          const img = document.querySelector('#randomlist img.random-image')
+          if (!img) return null
+          return {
+            src: String(img.src).slice(0, 24),
+            source: String(img.getAttribute('data-auth-src') || '').slice(0, 120),
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            hydrated: img.getAttribute('data-auth-loaded') || ''
+          }
+        })()`
+      )
+      ok = loaded
+      console.log(
+        ok
+          ? `PASS preview image decoded from the server (${detail.width}x${detail.height} via blob url)`
+          : `FAIL preview image did not decode (${JSON.stringify(detail)})`
+      )
+
+      // Clicking opens the lightbox; it must show the same decoded image.
+      if (ok) {
+        await evaluate(
+          cdp,
+          `(() => { const img = document.querySelector('#randomlist img.random-image'); if (img) img.click(); return true })()`
+        )
+        const opened = await waitFor(
+          cdp,
+          `(() => {
+            const el = document.querySelector('.view-image-lead img')
+            return Boolean(el && el.complete && el.naturalWidth > 0)
+          })()`,
+          8000
+        )
+        console.log(opened ? 'PASS lightbox shows the same decoded image' : 'FAIL lightbox image did not load')
+        if (!opened) ok = false
+        await evaluate(
+          cdp,
+          `(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); return true })()`
+        )
+      }
     } else if (SCENARIO === 'upload') {
-      const withAttachment = memos.filter((m) => (m.attachments || []).length > 0)
+      const withAttachment = memos.filter((m) => attachmentsOf(m).length > 0)
       ok = withAttachment.length >= 1
       console.log(
         ok
-          ? `PASS attachment published (${withAttachment[0].name}, attachments=${withAttachment[0].attachments.length})`
+          ? `PASS attachment published (${withAttachment[0].name || 'memo/' + withAttachment[0].id}, attachments=${attachmentsOf(withAttachment[0]).length})`
           : 'FAIL no memo with an attachment on the server'
       )
+    } else if (SCENARIO === 'upload-fail') {
+      const withAttachment = memos.filter((m) => attachmentsOf(m).length > 0)
+      ok = withAttachment.length >= 1
+      console.log(ok ? 'PASS retried attachment published with the memo' : 'FAIL retried attachment missing from the memo')
     } else if (SCENARIO === 'locked-public') {
       ok =
         found.length >= 1 &&

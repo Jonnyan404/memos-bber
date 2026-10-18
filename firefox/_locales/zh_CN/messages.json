@@ -80,6 +80,21 @@
    "picFailed":{
       "message": "上传图片失败"
    },
+   "uploadProgressLabel":{
+      "message": "上传中"
+   },
+   "uploadPreparing":{
+      "message": "准备中"
+   },
+   "uploadFailed":{
+      "message": "上传失败"
+   },
+   "uploadRetry":{
+      "message": "重试"
+   },
+   "uploadBusy":{
+      "message": "附件仍在上传，请稍候"
+   },
    "picPending":{
       "message": "有图片等待上传"
    },

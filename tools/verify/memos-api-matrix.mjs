@@ -43,6 +43,10 @@ const ONLY = (() => {
   return i >= 0 ? argv[i + 1].split(',') : null
 })()
 const KEEP = argv.includes('--keep')
+// `--ui` also drives the real popup in Chrome for every release, so the
+// progress bar is exercised through a genuine XHR rather than the shim.
+const UI = argv.includes('--ui')
+const UI_SCRIPT = path.join(ROOT, 'tools/verify/chrome-ui.mjs')
 // `--disallow-public` turns on the 0.15-0.26 "no public memos" setting so the
 // adapter's visibility policy can be checked in the blocked direction too.
 const DISALLOW_PUBLIC = argv.includes('--disallow-public')
@@ -224,6 +228,22 @@ function createShimContext() {
 
   ctx.window = ctx
   ctx.$ = {
+    // The adapter reaches for this to attach `upload.onprogress`. fetch cannot
+    // report upload bytes, so the transport records the listeners and `ajax`
+    // replays the 0%/100% boundary the browser would fire.
+    ajaxSettings: {
+      xhr() {
+        const listeners = []
+        return {
+          upload: {
+            addEventListener(type, cb) {
+              if (type === 'progress') listeners.push(cb)
+            }
+          },
+          progressListeners: listeners
+        }
+      }
+    },
     ajax(settings) {
       const doneCbs = []
       const failCbs = []
@@ -244,7 +264,20 @@ function createShimContext() {
         body = settings.data
         headers['Content-Type'] = settings.contentType || 'application/json'
       }
-      fetch(settings.url, { method: settings.type || 'GET', headers, body, signal: AbortSignal.timeout(20000) })
+
+      // Mimic what jQuery does with `settings.xhr`: call the factory so the
+      // caller can attach listeners, then report progress on that transport.
+      const transport = typeof settings.xhr === 'function' ? settings.xhr() : null
+      const totalBytes = typeof body === 'string' ? Buffer.byteLength(body) : 2048
+      const emit = (loaded) => {
+        if (!transport || !transport.progressListeners) return
+        for (const cb of transport.progressListeners) {
+          cb({ lengthComputable: true, loaded, total: totalBytes })
+        }
+      }
+      emit(0)
+
+      fetch(settings.url, { method: settings.type || 'GET', headers, body, signal: AbortSignal.timeout(30000) })
         .then(async (resp) => {
           const text = await resp.text()
           let json = null
@@ -253,6 +286,7 @@ function createShimContext() {
           } catch (_) {
             json = null
           }
+          emit(totalBytes)
           if (!resp.ok) {
             const xhr = { status: resp.status, statusText: resp.statusText, responseText: text, responseJSON: json }
             failCbs.forEach((cb) => cb(xhr))
@@ -399,6 +433,61 @@ async function runVersion(version) {
     const uploaded = await callWith((ok, bad) => api.uploadFile(file, {}, ok, bad))
     report.checks.push({ name: 'uploadFile', ok: Boolean(uploaded && (uploaded.name || uploaded.id != null)), detail: uploaded ? uploaded.name || String(uploaded.id) : 'none' })
 
+    // Progress must reach the caller on every era: multipart reports real bytes,
+    // base64 JSON reports the encoded body, and 26.10 reports chunk offsets.
+    const progressEvents = []
+    const progressUpload = await callWith((ok, bad) =>
+      api.uploadFile(file, { onProgress: (loaded, total) => progressEvents.push({ loaded, total }) }, ok, bad)
+    )
+    const lastProgress = progressEvents[progressEvents.length - 1]
+    report.checks.push({
+      name: 'uploadProgress',
+      // A file that fits in one chunk legitimately produces a single event.
+      ok:
+        Boolean(progressUpload && (progressUpload.name || progressUpload.id != null)) &&
+        progressEvents.length >= 1 &&
+        Boolean(lastProgress) &&
+        lastProgress.total > 0 &&
+        lastProgress.loaded === lastProgress.total,
+      detail: `${progressEvents.length} events, last ${lastProgress ? lastProgress.loaded + '/' + lastProgress.total : 'none'}`
+    })
+
+    // 3 MiB forces more than one 2 MiB chunk on 26.10 and a base64 body well
+    // past the old single-shot path everywhere else.
+    const bigBytes = Buffer.alloc(3 * 1024 * 1024, 7)
+    const bigFile = new File([bigBytes], 'verify-big.bin', { type: 'application/octet-stream' })
+    const bigProgress = []
+    let bigUploaded = null
+    let bigError = null
+    await callWith((ok, bad) =>
+      api.uploadFile(bigFile, { onProgress: (loaded, total) => bigProgress.push({ loaded, total }) }, ok, bad)
+    )
+      .then((value) => {
+        bigUploaded = value
+      })
+      .catch((err) => {
+        bigError = err
+      })
+    const sizeMatches = !bigUploaded || !bigUploaded.size || Number(bigUploaded.size) === bigFile.size
+    const bigLast = bigProgress[bigProgress.length - 1]
+    const bigMonotonic = bigProgress.every((e, i) => i === 0 || e.loaded >= bigProgress[i - 1].loaded)
+    // 3 MiB cannot fit in one chunk, so at least two reports are expected on
+    // every era (chunk offsets on 26.10, 0%/100% of the body elsewhere).
+    const bigProgressOk =
+      bigProgress.length >= 2 && Boolean(bigLast) && bigLast.total > 0 && bigLast.loaded === bigLast.total && bigMonotonic
+    report.checks.push({
+      name: 'uploadLarge',
+      ok: Boolean(bigUploaded && (bigUploaded.name || bigUploaded.id != null)) && sizeMatches && bigProgressOk,
+      detail: bigUploaded
+        ? `${bigUploaded.size || '?'} bytes over ${bigProgress.length} events, last ${bigLast ? bigLast.loaded + '/' + bigLast.total : 'none'}`
+        : bigError
+          ? `${bigError.kind || ''}/${bigError.status || ''} ${bigError.message || ''}`.trim()
+          : 'none'
+    })
+    if (bigUploaded) {
+      await callWith((ok, bad) => api.deleteResource(bigUploaded, ok, bad)).catch(() => null)
+    }
+
     const withAttachment = await callWith((ok, bad) =>
       api.createMemo({ content: `attachment check ${stamp}`, visibility: 'PRIVATE', resourceIdList: uploaded ? [uploaded] : [] }, ok, bad)
     )
@@ -424,6 +513,19 @@ async function runVersion(version) {
       await callWith((ok, bad) => api.deleteResource(uploaded, ok, bad))
       report.checks.push({ name: 'deleteResource', ok: true, detail: uploaded.name || String(uploaded.id) })
     }
+
+    if (UI) {
+      // Two real-browser passes per release: the upload bar and the rendered
+      // preview. Both depend on the era, so neither can be faked in the shim.
+      for (const scenario of ['upload', 'preview']) {
+        const ok = runBrowserScenario(scenario, session.token)
+        report.checks.push({
+          name: 'ui:' + scenario,
+          ok,
+          detail: ok ? 'real browser' : `chrome-ui ${scenario} scenario failed`
+        })
+      }
+    }
   } catch (err) {
     report.checks.push({ name: 'exception', ok: false, detail: err && (err.kind || err.status) ? `${err.kind}/${err.status} ${err.message || ''}`.trim() : String(err && err.message ? err.message : JSON.stringify(err)) })
   } finally {
@@ -432,8 +534,23 @@ async function runVersion(version) {
   return report
 }
 
-async function assertPortFree() {
+function runBrowserScenario(scenario, token) {
   try {
+    execFileSync(
+      process.execPath,
+      [UI_SCRIPT, '--url', BASE_URL + '/', '--token', token, '--scenario', scenario],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 240000 }
+    )
+    return true
+  } catch (err) {
+    const out = String((err.stdout || '') + (err.stderr || ''))
+    const lines = out.split('\n').filter((line) => /FAIL|Error|error:/.test(line)).slice(-3)
+    if (lines.length) console.log('  ' + lines.join('\n  '))
+    return false
+  }
+}
+
+async function assertPortFree() {  try {
     const resp = await fetch(BASE_URL + '/api/v1/status', { signal: AbortSignal.timeout(1500) })
     if (resp.ok || resp.status === 404) {
       throw new Error(`port ${PORT} already serves a Memos instance; stop it or change PORT`)

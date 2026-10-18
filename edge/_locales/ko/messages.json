@@ -98,6 +98,21 @@
   "picFailed": {
     "message": "업로드 실패"
   },
+  "uploadProgressLabel": {
+    "message": "업로드 중"
+  },
+  "uploadPreparing": {
+    "message": "준비 중"
+  },
+  "uploadFailed": {
+    "message": "업로드 실패"
+  },
+  "uploadRetry": {
+    "message": "다시 시도"
+  },
+  "uploadBusy": {
+    "message": "첨부 파일을 업로드하는 중입니다. 잠시만 기다려 주세요."
+  },
   "picPending": {
     "message": "이미지 업로드가 진행 중입니다"
   },

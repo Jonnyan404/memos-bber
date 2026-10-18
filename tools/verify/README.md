@@ -67,7 +67,9 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `success`（默认） | toast「发送成功」，服务端能查到该条 |
 | `public-forbidden` | 服务端禁用公开时，toast 指出具体原因且不产生 memo |
 | `invalid-token` | 保存阶段即提示令牌无效/URL 错误，不写入设置 |
-| `upload` | 通过真实文件选择框上传 PNG，空正文发送后服务端 memo 带 1 个附件 |
+| `upload` | 通过真实文件选择框上传 PNG，进度条出现并绘制（计数器 + 字节百分比），批次结束后收起；空正文发送后服务端 memo 带 1 个附件 |
+| `upload-fail` | 上传前断网：进度条转为失败态并露出「重试」；恢复网络后点重试能补传成功，memo 带上该附件 |
+| `preview` | 上传真实 PNG 并发送，卡片图片必须从服务端解码成功（`blob:` + `naturalWidth > 0`），点开灯箱同样解码 |
 | `locked-public` | 服务端禁用公开时，「公开」置灰（`not-allowed` + 透明度 + tooltip），点击只弹原因、不改变选择，正文仍以 PRIVATE 发出 |
 | `resize` | 用真实鼠标拖角：宽高各自独立变化、拖拽中只做 `transform` 预览、松手后落盘到 `popupEditorSize`；方向键 ±24px、双击复位 |
 | `drop-multi` | 在编辑器上 drop 两个 PNG：两个都上传、高亮清除、草稿不被清空，发送后 memo 带 2 个附件 |
@@ -252,7 +254,36 @@ node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15402/ --token "$TOKEN" -
 矩阵里的 `visibilityPolicy` 项对每个版本做双向断言：服务端真能收 PUBLIC 时适配层不得说
 「被禁」，服务端 403 时必须说「被禁」。矩阵端口可用 `MATRIX_PORT` 覆盖（默认 15400）。
 
-## 11. 纯函数单测
+## 11. 附件上传与图片预览
+
+每个版本都会跑三项上传检查：
+
+| 检查 | 断言 |
+|---|---|
+| `uploadFile` | 适配层能把文件传成资源/附件并拿到 name |
+| `uploadProgress` | `onProgress` 至少回调一次，最后一次 `loaded === total`（单块文件只产生一次事件是正常的） |
+| `uploadLarge` | 3 MiB 文件：≥2 次进度回调、单调不减、收尾到 `total`；服务端返回的 size 与原文件一致（26.10 会因此走两次 2 MiB 分片） |
+
+shim 里的 `$.ajaxSettings.xhr()` 返回一个带 `upload.addEventListener` 的伪传输对象，`ajax` 在请求前后各发一次
+`progress`（0% / 100%）。它验证的是「适配层把 `onProgress` 接到了 XHR 上并按 era 正确透传」，真实字节进度由
+下面这条真实浏览器路径覆盖。
+
+```bash
+# 适配层 + 真实弹窗，逐版本验证进度条与图片预览
+MATRIX_PORT=15420 node tools/verify/memos-api-matrix.mjs --ui
+```
+
+`--ui` 会在每个版本的容器起来后依次跑 `chrome-ui.mjs` 的两个场景，耗时大约是纯矩阵的 6 倍：
+
+| 场景 | 断言 |
+|---|---|
+| `upload` | 进度条出现并真的绘制（计数器 + 字节百分比 + 实际像素），批次结束收起；附件落到服务端并挂上 memo |
+| `preview` | 上传真实 1×1 PNG 后发送，卡片里的 `img.random-image` 必须拿到 `blob:` 地址且 `naturalWidth > 0`（即服务端字节真的解码成功）；点开灯箱后同一张图同样要解码 |
+
+`preview` 是唯一能覆盖 `buildV1ResourceStreamUrl` 的测试：每个 era 的流地址形态不同
+（0.22+ `/file/{name}/{filename}`、legacy `/o/r/{uid}` 或 `/o/r/{id}`），拼错了在浏览器里就是一张破图。
+
+## 12. 纯函数单测
 
 `node tools/verify/unit.mjs` 覆盖 `parseVersion / eraOfVersion / memoRef / errorInfo / extractTags / normalizeResource`，
 不需要 Docker，CI 的 bundle job 会跑。

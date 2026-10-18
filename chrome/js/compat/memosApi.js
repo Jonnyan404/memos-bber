@@ -208,6 +208,28 @@
         settings.contentType = 'application/json'
       }
 
+      // Byte-level progress for uploads. jQuery only exposes the XHR it builds
+      // through `settings.xhr`, and `upload.onprogress` has to be attached to
+      // that instance before it is sent. A throwing callback must never abort
+      // the request, so it is contained here.
+      if (typeof opts.onProgress === 'function') {
+        var reportProgress = opts.onProgress
+        settings.xhr = function () {
+          var transport = global.$.ajaxSettings.xhr()
+          if (transport && transport.upload) {
+            transport.upload.addEventListener('progress', function (event) {
+              if (!event || !event.lengthComputable) return
+              try {
+                reportProgress(event.loaded, event.total)
+              } catch (_) {
+                // progress is cosmetic; the upload itself must continue
+              }
+            })
+          }
+          return transport
+        }
+      }
+
       global.$
         .ajax(settings)
         .done(function (data) {
@@ -930,62 +952,204 @@
     return base + '_' + now + ext
   }
 
+  // 26.10+ accepts bounded chunks, which is the only path that reports real
+  // file bytes: inline uploads go through base64 (33% larger) and spend the
+  // encoding time before the first byte leaves the browser.
+  var UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+
+  function rememberUploadPath(info, kind) {
+    if (!info || !info.apiUrl) return
+    var cache = detectCache[info.apiUrl] || (detectCache[info.apiUrl] = {})
+    cache.uploadPath = kind
+  }
+
+  // 0.25+ has /attachments, 0.22-0.24 only /resources, and 0.23-0.25 often do
+  // not expose a version string at all, so the era cannot decide this. Probe
+  // with a GET instead of trying the upload: a wrong guess would push the whole
+  // file body at a route that cannot exist, then restart the progress bar when
+  // the fallback finally runs.
+  function resolveUploadOrder(info, era, done) {
+    var cached = info && info.apiUrl && detectCache[info.apiUrl] ? detectCache[info.apiUrl].uploadPath : ''
+    if (cached === 'resources' || cached === 'attachments') {
+      done([cached, cached === 'resources' ? 'attachments' : 'resources'])
+      return
+    }
+    // 0.22-0.23 only ever had /resources, so there is nothing to probe.
+    if (era === ERA_V1_FILTER || era === ERA_LEGACY) {
+      done(['resources', 'attachments'])
+      return
+    }
+    // 0.24 detects as v1-modern but has no attachment service yet, and its
+    // version string is usually missing. A one-row list answers the question
+    // far more cheaply than uploading the file to a route that cannot exist.
+    request(info, { path: 'attachments?pageSize=1' }, function () {
+      rememberUploadPath(info, 'attachments')
+      done(['attachments', 'resources'])
+    }, function (err) {
+      // 404/410: route absent. 200 with a non-JSON body: the SPA answered for a
+      // missing route, which some 0.23-0.25 builds do instead of 404.
+      if (err.status === 404 || err.status === 410 || err.status === 200) {
+        rememberUploadPath(info, 'resources')
+        done(['resources', 'attachments'])
+        return
+      }
+      done(['attachments', 'resources'])
+    })
+  }
+
   function uploadFile(info, file, options, success, fail) {
     var era = eraOf(info)
     var filename = timestampedFilename(file)
+    var onProgress = options && typeof options.onProgress === 'function' ? options.onProgress : null
 
     if (era === ERA_LEGACY) {
       var form = new global.FormData()
       form.append('file', file, filename)
-      request(info, { path: 'resource/blob', method: 'POST', form: form }, function (data) {
+      request(info, { path: 'resource/blob', method: 'POST', form: form, onProgress: onProgress }, function (data) {
         var entity = data && data.resource ? data.resource : data
         success(normalizeResource(entity, filename))
       }, fail)
       return
     }
 
-    readFileAsDataUrl(file, function (base64) {
-      var payload = { content: base64, filename: filename, type: file && file.type ? file.type : '' }
+    function uploadInline() {
+      resolveUploadOrder(info, era, function (kinds) {
+        // Base64 encoding happens before the request and reports no bytes, so
+        // the UI is told to switch to an indeterminate state for the duration.
+        if (onProgress) onProgress(0, 0)
 
-      function uploadLegacyBlob() {
-        var form = new global.FormData()
-        form.append('file', file, filename)
-        request(info, { path: 'resource/blob', method: 'POST', form: form }, function (data) {
-          var entity = data && data.resource ? data.resource : data
-          success(normalizeResource(entity, filename))
-        }, fail)
-      }
+        readFileAsDataUrl(file, function (base64) {
+          var payload = { content: base64, filename: filename, type: file && file.type ? file.type : '' }
 
-      function uploadResources() {
-        request(info, { path: 'resources', method: 'POST', body: payload }, function (data) {
-          success(normalizeResource(data && data.resource ? data.resource : data, filename))
-        }, function (err) {
-          // Undetected legacy install: 0.15-0.21 only offer multipart blob upload.
-          if (era === ERA_UNKNOWN && (err.status === 404 || err.status === 405 || err.status === 200)) {
-            uploadLegacyBlob()
-            return
+          function uploadLegacyBlob() {
+            var form = new global.FormData()
+            form.append('file', file, filename)
+            request(info, { path: 'resource/blob', method: 'POST', form: form, onProgress: onProgress }, function (data) {
+              var entity = data && data.resource ? data.resource : data
+              success(normalizeResource(entity, filename))
+            }, fail)
           }
+
+          function tryResources(next) {
+            request(info, { path: 'resources', method: 'POST', body: payload, onProgress: onProgress }, function (data) {
+              success(normalizeResource(data && data.resource ? data.resource : data, filename))
+            }, next)
+          }
+
+          function tryAttachments(next) {
+            request(info, { path: 'attachments', method: 'POST', body: payload, onProgress: onProgress }, function (data) {
+              var entity = data && data.attachment ? data.attachment : data
+              success(normalizeResource(entity, filename))
+            }, next)
+          }
+
+          var order = kinds.map(function (kind) {
+            return kind === 'resources' ? tryResources : tryAttachments
+          })
+          var index = 0
+          var lastError = null
+
+          function step() {
+            if (index >= order.length) {
+              // Undetected legacy install: 0.15-0.21 only offer multipart blob upload.
+              if (era === ERA_UNKNOWN) {
+                uploadLegacyBlob()
+                return
+              }
+              if (fail) fail(lastError)
+              return
+            }
+            order[index++](function (err) {
+              if (err && (err.kind === 'auth' || err.kind === 'forbidden')) {
+                if (fail) fail(err)
+                return
+              }
+              lastError = err
+              step()
+            })
+          }
+          step()
+        }, fail)
+      })
+    }
+
+    // 26.10+ only: POST attachments:upload takes a spec, returns an upload id,
+    // then accepts write_offset/data/finish_write. Chunks are read from the
+    // File lazily, so a large file never sits in memory as one base64 string.
+    function uploadChunked() {
+      var offset = 0
+      var uploadId = ''
+      var chunkSize = UPLOAD_CHUNK_SIZE
+      var total = file && file.size ? file.size : 0
+
+      function next() {
+        var end = Math.min(offset + chunkSize, total)
+        readFileAsDataUrl(file.slice(offset, end), function (base64) {
+          request(info, {
+            path: 'attachments:upload',
+            method: 'POST',
+            body: {
+              uploadId: uploadId,
+              writeOffset: String(offset),
+              data: base64,
+              finishWrite: end >= total
+            }
+          }, function (data) {
+            offset = end
+            if (onProgress) onProgress(offset, total || 1)
+            if (data && data.attachment) {
+              success(normalizeResource(data.attachment, filename))
+              return
+            }
+            if (end >= total) {
+              if (fail) fail({ kind: 'server', status: 0, code: null, message: 'upload finished without an attachment', hint: 'attachment' })
+              return
+            }
+            next()
+          }, function (err) {
+            // A committed chunk cannot be retried through the inline endpoint
+            // without uploading the file twice, so the job fails as a whole.
+            if (fail) fail(err)
+          })
+        }, function (err) {
           if (fail) fail(err)
         })
       }
 
-      // 0.25+ has /attachments; 0.22-0.24 only /resources. Probing is cheaper
-      // and more reliable than guessing from a version string that some
-      // releases (0.23-0.25) do not expose at all.
-      request(info, { path: 'attachments', method: 'POST', body: payload }, function (data) {
-        var entity = data && data.attachment ? data.attachment : data
-        success(normalizeResource(entity, filename))
-      }, function (err) {
-        // 0.22-0.24 have no attachment service; some builds answer unknown
-        // routes with the SPA (HTTP 200 HTML) instead of 404, so fall back on
-        // any non-auth failure.
-        if (err.kind !== 'auth' && err.kind !== 'forbidden') {
-          uploadResources()
+      request(info, {
+        path: 'attachments:upload',
+        method: 'POST',
+        body: {
+          spec: {
+            attachment: { filename: filename, type: (file && file.type) || 'application/octet-stream' },
+            totalSize: String(total)
+          },
+          writeOffset: '0'
+        }
+      }, function (data) {
+        uploadId = data && data.uploadId ? String(data.uploadId) : ''
+        if (!uploadId) {
+          uploadInline()
           return
         }
-        if (fail) fail(err)
+        var limit = data.maxChunkSize && isFinite(data.maxChunkSize) ? Math.floor(data.maxChunkSize) : UPLOAD_CHUNK_SIZE
+        chunkSize = Math.max(1, Math.min(limit, UPLOAD_CHUNK_SIZE))
+        // The upload is open and the size is known: leave the "preparing" state
+        // so a long first chunk does not look stalled.
+        if (onProgress) onProgress(0, total || 1)
+        next()
+      }, function () {
+        // The spec commits nothing, so falling back to the inline endpoint here
+        // cannot duplicate a partially written upload.
+        uploadInline()
       })
-    }, fail)
+    }
+
+    if (era === ERA_V2) {
+      uploadChunked()
+      return
+    }
+    uploadInline()
   }
 
   // ------------------------------------------------------- read-only features

@@ -98,6 +98,21 @@
    "picFailed":{
       "message": "Uploading failed"
    },
+   "uploadProgressLabel":{
+      "message": "Uploading"
+   },
+   "uploadPreparing":{
+      "message": "Preparing"
+   },
+   "uploadFailed":{
+      "message": "Upload failed"
+   },
+   "uploadRetry":{
+      "message": "Retry"
+   },
+   "uploadBusy":{
+      "message": "An attachment is still uploading. Please wait."
+   },
    "picPending":{
       "message": "Image uploading is in progress"
    },

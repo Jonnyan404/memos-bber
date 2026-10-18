@@ -98,6 +98,21 @@
   "picFailed": {
     "message": "La subida falló"
   },
+  "uploadProgressLabel": {
+    "message": "Subiendo"
+  },
+  "uploadPreparing": {
+    "message": "Preparando"
+  },
+  "uploadFailed": {
+    "message": "Error de subida"
+  },
+  "uploadRetry": {
+    "message": "Reintentar"
+  },
+  "uploadBusy": {
+    "message": "Todavía se está subiendo un adjunto. Espera."
+  },
   "picPending": {
     "message": "La imagen aún se está subiendo"
   },

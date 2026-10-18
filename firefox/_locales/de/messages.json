@@ -98,6 +98,21 @@
   "picFailed": {
     "message": "Upload fehlgeschlagen"
   },
+  "uploadProgressLabel": {
+    "message": "Wird hochgeladen"
+  },
+  "uploadPreparing": {
+    "message": "Vorbereitung"
+  },
+  "uploadFailed": {
+    "message": "Upload fehlgeschlagen"
+  },
+  "uploadRetry": {
+    "message": "Erneut versuchen"
+  },
+  "uploadBusy": {
+    "message": "Ein Anhang wird noch hochgeladen. Bitte warten."
+  },
   "picPending": {
     "message": "Bild wird noch hochgeladen"
   },

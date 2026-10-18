@@ -98,6 +98,21 @@
   "picFailed": {
     "message": "アップロード失敗"
   },
+  "uploadProgressLabel": {
+    "message": "アップロード中"
+  },
+  "uploadPreparing": {
+    "message": "準備中"
+  },
+  "uploadFailed": {
+    "message": "アップロード失敗"
+  },
+  "uploadRetry": {
+    "message": "再試行"
+  },
+  "uploadBusy": {
+    "message": "添付ファイルをアップロード中です。少々お待ちください。"
+  },
   "picPending": {
     "message": "画像のアップロードが進行中です"
   },
