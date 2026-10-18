@@ -226,5 +226,11 @@
   },
   "lockPublicBlocked": {
     "message": "Dieser Server verbietet öffentliche Memos; „Öffentlich“ ist nicht wählbar"
+  },
+  "picDropUnsupported": {
+    "message": "Diese Datei kann nicht hochgeladen werden (Ordner werden übersprungen)"
+  },
+  "picDropSkipped": {
+    "message": "Einige Elemente wurden übersprungen (Ordner können nicht hochgeladen werden)"
   }
 }

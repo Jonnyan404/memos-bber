@@ -84,6 +84,24 @@ a{color: #555;}
     border-bottom-color: #888;
 }
 
+#editor-resize-handle:focus-visible{
+    outline: 2px solid rgb(22,163,74);
+    outline-offset: 2px;
+    opacity: 1;
+}
+
+/* Files dragged over the editor: highlight the target instead of fading the
+   whole page (which used to look like the popup had been disabled). */
+.memo-editor.drop-active{
+    outline: 2px dashed rgb(22,163,74);
+    outline-offset: -4px;
+    background-color: rgb(22 163 74 / .06);
+}
+
+.memo-editor.drop-active .common-editor-inputer{
+    background-color: transparent;
+}
+
 .body.fullscreen #editor-resize-handle{
     display: none;
 }
@@ -160,13 +178,51 @@ a{color: #555;}
 
 .body.fullscreen{
     min-width: 0;
-    width: 100vw;
+    width: 100%;
     height: 100vh;
+    /* The default body margin adds 16px of scroll on a 100vh page. */
+    margin: 0;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    /* The editor takes the leftover height; nothing should scroll the page. */
+    overflow: hidden;
+}
+
+/* A full-width editor on a wide screen produces 150-character lines. Cap the
+   column and centre it, like any writing surface. Listed explicitly: a
+   blanket `> *` rule also stretches the absolutely positioned header controls. */
+.body.fullscreen > .title,
+.body.fullscreen > #blog_info,
+.body.fullscreen > .memo-editor,
+.body.fullscreen > .common-tools-wrapper,
+.body.fullscreen > .upload-list-wrapper,
+.body.fullscreen > .tag-list,
+.body.fullscreen > .tag-hide,
+.body.fullscreen > #randomlist{
+    width: 100%;
+    max-width: 880px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.body.fullscreen .memo-editor{
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .body.fullscreen .common-editor-inputer{
-    min-height: 60vh;
+    min-height: 0;
+    height: auto;
+    flex: 1 1 auto;
+}
+
+.body.fullscreen .common-tools-wrapper,
+.body.fullscreen .upload-list-wrapper,
+.body.fullscreen .tag-list,
+.body.fullscreen .tag-hide,
+.body.fullscreen #randomlist{
+    flex: 0 0 auto;
 }
 input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 
@@ -708,5 +764,9 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
         min-width: 3.5rem;
         min-height: 2.75rem;
         white-space: nowrap;
+    }
+    #editor-resize-handle {
+        width: 22px;
+        height: 22px;
     }
 }

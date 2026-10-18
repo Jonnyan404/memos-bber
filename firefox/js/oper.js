@@ -19,6 +19,10 @@ function openFullscreenTab() {
   }
 }
 
+// Free resize of the editor. Width and height move independently (hold Shift
+// to keep the ratio); during the drag only a CSS transform is applied, because
+// resizing the real popup on every pointermove makes Chrome jitter. The real
+// size is committed on release and persisted.
 function initProportionalEditorResize() {
   try {
     if (isFullscreenMode()) return
@@ -33,106 +37,133 @@ function initProportionalEditorResize() {
     const baseW = Math.ceil(initialRect.width)
     const baseH = Math.ceil(initialRect.height)
 
-    // Lock the base size. Scaling will be applied by setting width/height.
+    // Lock the base size; only width/height change while resizing.
     editor.style.width = `${baseW}px`
     editor.style.height = `${baseH}px`
     editor.style.minWidth = `${baseW}px`
     editor.style.minHeight = `${baseH}px`
 
-    const storageKey = 'popupEditorScale'
+    const storageKey = 'popupEditorSize'
+    const legacyScaleKey = 'popupEditorScale'
 
-    const nonEditorHeight = Math.max(0, Math.ceil(document.body.scrollHeight - initialRect.height))
-    let maxScale = 1
-    let currentScale = 1
-    let nextScale = 1
+    // Everything that is not the editor and still on screen. Measured live: at
+    // first run the settings panel is open, and a cached value would keep the
+    // editor from ever growing after the panel collapses.
+    const measureChrome = () => {
+      let extra = safety
+      const bodyStyle = window.getComputedStyle(document.body)
+      extra += (parseFloat(bodyStyle.paddingTop) || 0) + (parseFloat(bodyStyle.paddingBottom) || 0)
+      Array.prototype.forEach.call(document.body.children, (el) => {
+        if (el === editor) return
+        const style = window.getComputedStyle(el)
+        if (style.display === 'none' || style.position === 'absolute' || style.position === 'fixed') return
+        const rect = el.getBoundingClientRect()
+        if (!rect.height) return
+        extra += rect.height + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0)
+      })
+      return Math.ceil(extra)
+    }
+
+    // Chrome caps popups at 800x600; on Android the panel is the screen, so the
+    // smaller of the two wins (growing past it would just clip the UI).
+    const screenW = (window.screen && window.screen.availWidth) || 800
+    const screenH = (window.screen && window.screen.availHeight) || 600
+    const viewportW = Math.min(800, screenW)
+    const viewportH = Math.min(600, screenH)
+
+    let maxW = baseW
+    let maxH = baseH
+    let width = baseW
+    let height = baseH
     let dragging = false
-    let dragStartX = 0
-    let dragStartY = 0
-    let dragStartScale = 1
+    let startX = 0
+    let startY = 0
+    let startW = baseW
+    let startH = baseH
+    let previewW = baseW
+    let previewH = baseH
 
-    const clampScale = (scale) => {
-      if (!Number.isFinite(scale)) return 1
-      return Math.min(Math.max(scale, 1), maxScale)
+    const clampW = (value) => Math.min(Math.max(Math.round(value), baseW), maxW)
+    const clampH = (value) => Math.min(Math.max(Math.round(value), baseH), maxH)
+    const describe = (w, h) => handle.setAttribute('aria-valuetext', `${w} x ${h}`)
+
+    const applySize = (w, h) => {
+      width = clampW(w)
+      height = clampH(h)
+      editor.style.width = `${width}px`
+      editor.style.height = `${height}px`
+      describe(width, height)
     }
 
-    const showPreviewScale = (scale) => {
-      const previewScale = clampScale(scale)
-      const relativeScale = previewScale / currentScale
-      editor.style.transformOrigin = 'top left'
-      editor.style.transform = `scale(${relativeScale})`
-    }
-
-    const clearPreviewScale = () => {
+    const clearPreview = () => {
       editor.style.transform = ''
       editor.style.transformOrigin = ''
     }
 
-    const applyScale = (scale) => {
-      currentScale = clampScale(scale)
-      nextScale = currentScale
-      editor.style.width = `${Math.round(baseW * currentScale)}px`
-      editor.style.height = `${Math.round(baseH * currentScale)}px`
+    const showPreview = (w, h) => {
+      previewW = clampW(w)
+      previewH = clampH(h)
+      editor.style.transformOrigin = 'top left'
+      editor.style.transform = `scale(${previewW / width}, ${previewH / height})`
+      describe(previewW, previewH)
     }
 
-    const persistScale = () => {
+    const remember = () => {
       try {
-        if (window.localStorage) window.localStorage.setItem(storageKey, String(currentScale))
-      } catch (_) {}
-
+        chrome.storage.sync.set({ [storageKey]: { width: width, height: height } })
+      } catch (_) {
+        // ignore
+      }
       try {
-        if (chrome.storage && chrome.storage.sync) {
-          chrome.storage.sync.set({ [storageKey]: currentScale })
+        if (window.localStorage) {
+          window.localStorage.setItem(storageKey, JSON.stringify({ width: width, height: height }))
         }
       } catch (_) {
         // ignore
       }
     }
 
-    const computeMaxScale = () => {
+    const computeMax = () => {
       if (dragging) return
-      // In popup mode, allow scaling up to Chrome's max popup size.
-      // Do not clamp by current window.innerWidth/innerHeight, otherwise the popup can't grow to the max.
-      const viewportW = 800
-      const viewportH = 600
-      const toolsRect = tools.getBoundingClientRect()
-      const toolsStyle = window.getComputedStyle(tools)
-      const toolsMarginTop = parseFloat(toolsStyle.marginTop || '0') || 0
       const extraWidth = safety * 2
-      const extraHeight = nonEditorHeight + Math.ceil(toolsRect.height + toolsMarginTop) + safety
-      const widthScale = (viewportW - extraWidth) / baseW
-      const heightScale = (viewportH - extraHeight) / baseH
-      maxScale = Math.max(1, Math.min(widthScale, heightScale))
-      applyScale(currentScale)
+      maxW = Math.max(baseW, Math.floor(viewportW - extraWidth))
+      maxH = Math.max(baseH, Math.floor(viewportH - measureChrome()))
+      applySize(width, height)
     }
 
     const endDrag = () => {
       if (!dragging) return
       dragging = false
       handle.classList.remove('dragging')
-      clearPreviewScale()
-      applyScale(nextScale)
-      computeMaxScale()
-      persistScale()
+      clearPreview()
+      applySize(previewW, previewH)
+      computeMax()
+      remember()
     }
 
     const onPointerMove = (ev) => {
       if (!dragging) return
-      const dx = ev.clientX - dragStartX
-      const dy = ev.clientY - dragStartY
-      const widthScale = (baseW * dragStartScale + dx) / baseW
-      const heightScale = (baseH * dragStartScale + dy) / baseH
-      nextScale = clampScale(Math.max(widthScale, heightScale))
-      showPreviewScale(nextScale)
+      const dx = ev.clientX - startX
+      const dy = ev.clientY - startY
+      if (ev.shiftKey) {
+        const factor = Math.max((startW + dx) / startW, (startH + dy) / startH)
+        showPreview(startW * factor, startH * factor)
+        return
+      }
+      showPreview(startW + dx, startH + dy)
     }
 
     const startDrag = (ev) => {
+      if (typeof ev.button === 'number' && ev.button !== 0) return
       ev.preventDefault()
+      computeMax()
       dragging = true
-      dragStartX = ev.clientX
-      dragStartY = ev.clientY
-      dragStartScale = currentScale
-      nextScale = currentScale
-      showPreviewScale(currentScale)
+      startX = ev.clientX
+      startY = ev.clientY
+      startW = width
+      startH = height
+      previewW = width
+      previewH = height
       handle.classList.add('dragging')
       if (typeof handle.setPointerCapture === 'function') {
         try {
@@ -143,22 +174,46 @@ function initProportionalEditorResize() {
       }
     }
 
-    computeMaxScale()
+    const onKeyDown = (ev) => {
+      const amount = ev.shiftKey ? 8 : 24
+      if (ev.key === 'ArrowRight') applySize(width + amount, height)
+      else if (ev.key === 'ArrowLeft') applySize(width - amount, height)
+      else if (ev.key === 'ArrowDown') applySize(width, height + amount)
+      else if (ev.key === 'ArrowUp') applySize(width, height - amount)
+      else if (ev.key === 'Home') applySize(baseW, baseH)
+      else return
+      ev.preventDefault()
+      remember()
+    }
+
+    const resetSize = () => {
+      applySize(baseW, baseH)
+      remember()
+    }
+
+    computeMax()
 
     try {
-      const localValue = window.localStorage ? Number(window.localStorage.getItem(storageKey)) : NaN
-      if (Number.isFinite(localValue) && localValue >= 1) {
-        applyScale(localValue)
+      const localRaw = window.localStorage ? window.localStorage.getItem(storageKey) : null
+      const local = localRaw ? JSON.parse(localRaw) : null
+      if (local && Number(local.width) >= baseW && Number(local.height) >= baseH) {
+        applySize(local.width, local.height)
       }
     } catch (_) {
       // ignore
     }
 
     try {
-      chrome.storage.sync.get({ [storageKey]: 1 }, (items) => {
-        const savedScale = Number(items && items[storageKey])
-        if (Number.isFinite(savedScale) && savedScale >= 1) {
-          applyScale(savedScale)
+      chrome.storage.sync.get({ [storageKey]: null, [legacyScaleKey]: null }, (items) => {
+        const saved = items && items[storageKey]
+        if (saved && Number(saved.width) >= baseW && Number(saved.height) >= baseH) {
+          applySize(saved.width, saved.height)
+          return
+        }
+        // Migrate the single-scale value written by older builds.
+        const legacy = Number(items && items[legacyScaleKey])
+        if (Number.isFinite(legacy) && legacy >= 1) {
+          applySize(baseW * legacy, baseH * legacy)
         }
       })
     } catch (_) {
@@ -170,10 +225,18 @@ function initProportionalEditorResize() {
     handle.addEventListener('pointerup', endDrag)
     handle.addEventListener('pointercancel', endDrag)
     window.addEventListener('pointerup', endDrag)
-    window.addEventListener('resize', computeMaxScale)
+    handle.addEventListener('keydown', onKeyDown)
+    handle.addEventListener('dblclick', resetSize)
+    window.addEventListener('resize', computeMax)
   } catch (_) {
     // best-effort only
   }
+}
+
+// One place for the "show a list below the editor" animation. The old
+// slideDown(500) made the popup look sluggish and jumped the layout.
+function showRandomList(content) {
+  $('#randomlist').stop(true, true).html(content).show()
 }
 
 function msg(key) {
@@ -311,10 +374,6 @@ function updateLockNowText(lockType) {
   } else if (lockType === 'PROTECTED') {
     $('#lock-now').text(msg('lockProtected'))
   }
-}
-
-function showRandomList(content) {
-  $('#randomlist').stop(true, true).html(content).show()
 }
 
 applyDayjsLocaleByUiLanguage(typeof window.getUiLanguage === 'function' ? window.getUiLanguage() : 'auto')
@@ -502,41 +561,89 @@ document.addEventListener('paste', function (e) {
   }
 })
 
+// Files can be dropped anywhere on the editor, not only on the textarea. The
+// old cue faded the whole page to 30%; highlight the drop zone instead, and
+// upload every dropped file (it used to keep only the last one).
 function initDrag() {
-  var file = null
-  var obj = $("textarea[name=text]")[0]
-  obj.ondragenter = function (ev) {
-    if (ev.target.className === 'common-editor-inputer') {
-      $.message({
-        message: msg('picDrag'),
-        autoClose: false
-      })
-      $('body').css('opacity', 0.3)
-    }
-    ev.dataTransfer.dropEffect = 'copy'
+  const editor = document.querySelector('.memo-editor')
+  if (!editor) return
+
+  let depth = 0
+
+  const clearDropState = () => {
+    depth = 0
+    editor.classList.remove('drop-active')
   }
-  obj.ondragover = function (ev) {
+
+  const carriesFiles = (ev) => {
+    const dt = ev.dataTransfer
+    if (!dt) return false
+    const types = Array.prototype.slice.call(dt.types || [])
+    return types.indexOf('Files') !== -1
+  }
+
+  editor.addEventListener('dragenter', (ev) => {
+    if (!carriesFiles(ev)) return
     ev.preventDefault()
-    ev.dataTransfer.dropEffect = 'copy'
-  }
-  obj.ondrop = function (ev) {
-    $('body').css('opacity', 1)
+    depth++
+    editor.classList.add('drop-active')
+  })
+
+  editor.addEventListener('dragover', (ev) => {
+    if (!carriesFiles(ev)) return
     ev.preventDefault()
-    var files = ev.dataTransfer.files || ev.target.files
-    for (var i = 0; i < files.length; i++) {
-      file = files[i]
-    }
-    uploadImage(file)
-  }
-  obj.ondragleave = function (ev) {
+    try {
+      ev.dataTransfer.dropEffect = 'copy'
+    } catch (_) {}
+    editor.classList.add('drop-active')
+  })
+
+  editor.addEventListener('dragleave', (ev) => {
+    if (!carriesFiles(ev)) return
     ev.preventDefault()
-    if (ev.target.className === 'common-editor-inputer') {
-      $.message({
-        message: msg('picCancelDrag')
-      })
-      $('body').css('opacity', 1)
-    }
+    // dragleave also fires when crossing child elements; count the nesting so
+    // the highlight does not flicker while moving inside the editor.
+    depth = Math.max(0, depth - 1)
+    if (depth === 0) clearDropState()
+  })
+
+  editor.addEventListener('drop', (ev) => {
+    if (!carriesFiles(ev)) return
+    ev.preventDefault()
+    const files = ev.dataTransfer ? ev.dataTransfer.files : null
+    clearDropState()
+    uploadFiles(files)
+  })
+}
+
+// Sequential upload keeps the attachment list in order and avoids racing the
+// storage writes that track it.
+function uploadFiles(files) {
+  const all = Array.prototype.slice.call(files || [])
+  const usable = all.filter(function (file) {
+    // A dropped folder arrives as a 0-byte entry without a type; uploading it
+    // would fail with a confusing server error.
+    return file && (file.size > 0 || file.type)
+  })
+  const skipped = all.length - usable.length
+
+  if (usable.length === 0) {
+    $.message({ message: msg('picDropUnsupported') })
+    return
   }
+
+  let index = 0
+  const next = function () {
+    if (index >= usable.length) {
+      if (skipped > 0) {
+        $.message({ message: msg('picDropSkipped') })
+      }
+      return
+    }
+    const file = usable[index++]
+    uploadImage(file, next)
+  }
+  next()
 }
 
 function escapeHtml(input) {
@@ -927,7 +1034,10 @@ $(document).on('click', '.upload-del', function () {
   })
 })
 
-function uploadImage(file) {
+function uploadImage(file, done) {
+  const finish = function (err) {
+    if (typeof done === 'function') done(err)
+  }
   $.message({
     message: msg('picUploading'),
     autoClose: false
@@ -945,20 +1055,34 @@ function uploadImage(file) {
       function (entity) {
         if (entity) {
           relistNow.push(entity)
-          chrome.storage.sync.set({ open_action: '', open_content: '', resourceIdList: relistNow }, function () {
-            $.message({ message: msg('picSuccess') })
-            renderUploadList(relistNow)
-          })
+          // Keep the draft: clearing it here lost the text if the popup closed
+          // right after an upload.
+          chrome.storage.sync.set(
+            { open_action: '', open_content: $("textarea[name=text]").val(), resourceIdList: relistNow },
+            function () {
+              $.message({ message: msg('picSuccess') })
+              renderUploadList(relistNow)
+              finish(null)
+            }
+          )
           return
         }
-        chrome.storage.sync.set({ open_action: '', open_content: '' }, function () {
-          $.message({ message: msg('picFailed') })
-        })
+        chrome.storage.sync.set(
+          { open_action: '', open_content: $("textarea[name=text]").val() },
+          function () {
+            $.message({ message: msg('picFailed') })
+            finish({ kind: 'client', status: 0, message: 'upload failed' })
+          }
+        )
       },
       function (err) {
-        chrome.storage.sync.set({ open_action: '', open_content: '' }, function () {
-          $.message({ message: memoErrorText(err) })
-        })
+        chrome.storage.sync.set(
+          { open_action: '', open_content: $("textarea[name=text]").val() },
+          function () {
+            $.message({ message: memoErrorText(err) })
+            finish(err)
+          }
+        )
       }
     )
   })
@@ -1045,17 +1169,17 @@ $('#opensite').click(function () {
 // 0.23.1版本 GET api/v1/{parent}/tags 接口已移除，参考 https://github.com/usememos/memos/issues/4161 
 $('#tags').click(function () {
   get_info(function (info) {
-    console.log('[memos-bber] tags click info:', info)
+    //console.log('[memos-bber] tags click info:', info)
     if (info.apiUrl) {
       var tagDom = "";
       const adapter = getApiAdapter(info)
       if (!adapter) {
-        console.warn('[memos-bber] no adapter for tags')
+        //console.warn('[memos-bber] no adapter for tags')
         return
       }
 
       const renderTags = function (tags) {
-        console.log('[memos-bber] tags result:', tags)
+        //console.log('[memos-bber] tags result:', tags)
         const uniTags = [...new Set((Array.isArray(tags) ? tags : []).filter(Boolean))]
         $.each(uniTags, function (_, tag) {
           tagDom += '<span class="item-container">#' + tag + '</span>';
@@ -1065,7 +1189,7 @@ $('#tags').click(function () {
       }
 
       adapter.listTags(renderTags, function (err) {
-        console.error('[memos-bber] tags failed:', err)
+        //console.error('[memos-bber] tags failed:', err)
         $.message({ message: msg('placeApiUrl') })
       })
     } else {
@@ -1188,12 +1312,12 @@ $('#search').click(function () {
 
 $('#random').click(function () {
   get_info(function (info) {
-    console.log('[memos-bber] random click info:', info)
+    //console.log('[memos-bber] random click info:', info)
     if (info.status) {
       $("#randomlist").html('').hide()
       const adapter = getApiAdapter(info)
       if (!adapter) {
-        console.warn('[memos-bber] no adapter for random')
+        //console.warn('[memos-bber] no adapter for random')
         return
       }
 
@@ -1208,7 +1332,7 @@ $('#random').click(function () {
           randDom(randomData)
         },
         function (err) {
-          console.error('[memos-bber] random failed:', err)
+          //console.error('[memos-bber] random failed:', err)
           $.message({ message: msg('placeApiUrl') })
         }
       )

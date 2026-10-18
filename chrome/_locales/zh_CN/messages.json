@@ -226,5 +226,11 @@
    },
   "lockPublicBlocked": {
     "message": "服务端已禁用公开备忘录，无法选择“公开”"
+  },
+  "picDropUnsupported": {
+    "message": "这不是可上传的文件（文件夹无法上传）"
+  },
+  "picDropSkipped": {
+    "message": "部分拖入的内容已跳过（文件夹无法上传）"
   }
 }

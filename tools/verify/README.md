@@ -57,7 +57,8 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 ```
 
 参数：`--extension`（目录）、`--chrome`/`CHROME_PATH`、`--port`（调试端口，默认 9444）、
-`--scenario success|public-forbidden|invalid-token`、`--subpath /memos`、`--text`（发送内容）。
+`--scenario`（见下表）、`--subpath /memos`、`--page`（默认 `popup.html`，全屏页用
+`--page=popup.html?mode=full`）、`--viewport 1280x800`、`--mobile`、`--screenshot out.png`、`--text`。
 
 场景：
 
@@ -68,6 +69,9 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `invalid-token` | 保存阶段即提示令牌无效/URL 错误，不写入设置 |
 | `upload` | 通过真实文件选择框上传 PNG，空正文发送后服务端 memo 带 1 个附件 |
 | `locked-public` | 服务端禁用公开时，「公开」置灰（`not-allowed` + 透明度 + tooltip），点击只弹原因、不改变选择，正文仍以 PRIVATE 发出 |
+| `resize` | 用真实鼠标拖角：宽高各自独立变化、拖拽中只做 `transform` 预览、松手后落盘到 `popupEditorSize`；方向键 ±24px、双击复位 |
+| `drop-multi` | 在编辑器上 drop 两个 PNG：两个都上传、高亮清除、草稿不被清空，发送后 memo 带 2 个附件 |
+| `fullscreen-layout` | 全屏页（`--page=popup.html?mode=full`）无整页滚动、编辑区 880 上限且占满剩余高度、发送按钮在视口内、语言/设置按钮仍在视口内 |
 
 ## 4. 它做了什么 / 坑
 
@@ -150,7 +154,27 @@ node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" -
 可见性选择器与发送按钮高度 ≥ 40px、选择器右边缘不得滑进发送按钮下方，并照常发布一条 memo。
 CSS 用 `@media (pointer: coarse)` 隔离，桌面弹窗外观不受影响（可用 `--screenshot out.png` 目视复核）。
 
-## 8. 可见性策略（禁止公开备忘录）
+## 8. 全屏页与自由缩放
+
+两者共用 `popup.html`，只是全屏页带 `?mode=full`：body 加 `.fullscreen` 后变成 flex 列，
+编辑区 `flex:1` 吃掉剩余高度、内容列 `max-width:880px` 居中、`margin:0` 去掉 100vh 页面
+多出来的 16px 滚动。缩放把手是 `role="separator" tabindex="0"`：默认两轴独立、按住 Shift
+保持比例、方向键每次 24px（Shift 8px）、Home 或双击复位；拖拽中只改 `transform`（否则
+每次 pointermove 都改真实弹窗尺寸会让 Chrome 抖动），松手才落盘 `popupEditorSize`
+（旧的 `popupEditorScale` 会迁移）。
+
+```bash
+node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" --scenario resize
+node tools/verify/chrome-ui.mjs --page=popup.html?mode=full --viewport 1280x800 \
+  --url http://127.0.0.1:15400/ --token "$TOKEN" --scenario fullscreen-layout --screenshot /tmp/fs.png
+node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" --scenario drop-multi
+```
+
+拖放上传：整个编辑器都可接收（原来只有 textarea），多文件按顺序逐个上传，文件夹/空文件
+跳过并提示，拖入时给编辑区加 `drop-active` 虚线高亮（原来是把整页 opacity 降到 0.3），
+上传成功不再清空草稿。
+
+## 9. 可见性策略（禁止公开备忘录）
 
 Memos 0.15–0.26 有 `disallowPublicVisibility`（0.27 起移除）。适配层用
 `GET instance/settings/MEMO_RELATED` 读取它（普通用户令牌也能读），结果存进
@@ -167,7 +191,7 @@ node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15402/ --token "$TOKEN" -
 矩阵里的 `visibilityPolicy` 项对每个版本做双向断言：服务端真能收 PUBLIC 时适配层不得说
 「被禁」，服务端 403 时必须说「被禁」。矩阵端口可用 `MATRIX_PORT` 覆盖（默认 15400）。
 
-## 9. 纯函数单测
+## 10. 纯函数单测
 
 `node tools/verify/unit.mjs` 覆盖 `parseVersion / eraOfVersion / memoRef / errorInfo / extractTags / normalizeResource`，
 不需要 Docker，CI 的 bundle job 会跑。

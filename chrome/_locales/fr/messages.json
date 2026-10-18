@@ -226,5 +226,11 @@
   },
   "lockPublicBlocked": {
     "message": "Ce serveur interdit les mémos publics ; « Public » n’est pas sélectionnable"
+  },
+  "picDropUnsupported": {
+    "message": "Ce fichier ne peut pas être envoyé (les dossiers sont ignorés)"
+  },
+  "picDropSkipped": {
+    "message": "Certains éléments ont été ignorés (les dossiers ne peuvent pas être envoyés)"
   }
 }

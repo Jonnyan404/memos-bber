@@ -122,6 +122,12 @@ jobs:
             extra: '--scenario upload'
           - label: mobile
             extra: '--mobile'
+          - label: resize
+            extra: '--scenario resize'
+          - label: drop-multi
+            extra: '--scenario drop-multi'
+          - label: fullscreen
+            extra: '--page=popup.html?mode=full --viewport 1280x800 --scenario fullscreen-layout'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

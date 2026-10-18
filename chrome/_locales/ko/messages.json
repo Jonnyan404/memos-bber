@@ -226,5 +226,11 @@
   },
   "lockPublicBlocked": {
     "message": "이 서버는 공개 메모를 금지하므로 ‘공개’를 선택할 수 없습니다"
+  },
+  "picDropUnsupported": {
+    "message": "업로드할 수 없는 파일입니다(폴더는 제외됩니다)"
+  },
+  "picDropSkipped": {
+    "message": "일부 항목을 건너뛰었습니다(폴더는 업로드할 수 없습니다)"
   }
 }

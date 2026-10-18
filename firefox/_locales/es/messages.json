@@ -226,5 +226,11 @@
   },
   "lockPublicBlocked": {
     "message": "Este servidor no permite memos públicos; no se puede elegir «Público»"
+  },
+  "picDropUnsupported": {
+    "message": "Ese archivo no se puede subir (las carpetas se omiten)"
+  },
+  "picDropSkipped": {
+    "message": "Se omitieron algunos elementos (las carpetas no se pueden subir)"
   }
 }

@@ -226,5 +226,11 @@
    },
   "lockPublicBlocked": {
     "message": "This server disables public memos, so “Public” cannot be selected"
+  },
+  "picDropUnsupported": {
+    "message": "Not a file that can be uploaded (folders are skipped)"
+  },
+  "picDropSkipped": {
+    "message": "Some dropped items were skipped (folders cannot be uploaded)"
   }
 }

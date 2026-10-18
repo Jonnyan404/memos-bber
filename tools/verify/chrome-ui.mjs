@@ -30,6 +30,10 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 function arg(name, fallback = '') {
+  // Both `--key value` and `--key=value`; the latter avoids quoting problems
+  // for values with `?` in them (e.g. popup.html?mode=full on a shell line).
+  const inline = process.argv.find((a) => a.startsWith('--' + name + '='))
+  if (inline) return inline.slice(name.length + 3)
   const i = process.argv.indexOf('--' + name)
   if (i === -1) return fallback
   const next = process.argv[i + 1]
@@ -47,6 +51,14 @@ const SCREENSHOT = arg('screenshot', '')
 // Emulate a phone-width popup (Firefox for Android renders it in a full-width
 // panel) and assert the shared layout still fits and stays tappable.
 const MOBILE = has('mobile')
+// Which page to open: the toolbar popup, or the full-tab editor.
+const PAGE = arg('page', 'popup.html')
+// Optional explicit viewport, e.g. --viewport 1280x800.
+const VIEW = (() => {
+  const raw = arg('viewport', '')
+  const m = /^(\d+)x(\d+)$/.exec(raw)
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : null
+})()
 const HEADLESS = arg('headless', 'true') !== 'false'
 const KEEP = has('keep')
 const PORT = Number(arg('port', '9444'))
@@ -234,6 +246,13 @@ async function waitFor(cdp, expression, timeoutMs = 8000) {
   return false
 }
 
+async function capture(cdp, file) {
+  await cdp.send('Page.enable').catch(() => {})
+  const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
+  fs.writeFileSync(file, Buffer.from(shot.data, 'base64'))
+  console.log('screenshot:', file)
+}
+
 async function waitForToast(cdp, pattern, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs
   let last = ''
@@ -319,12 +338,13 @@ async function main() {
   try {
     await waitForEndpoint()
     const id = extensionId(EXT_DIR)
-    const target = await openTarget(`chrome-extension://${id}/popup.html`)
+    const target = await openTarget(`chrome-extension://${id}/${PAGE}`)
     cdp = new Cdp(target.webSocketDebuggerUrl)
     await cdp.send('Runtime.enable')
+    const metrics = VIEW || { width: MOBILE ? 360 : 420, height: MOBILE ? 640 : 640 }
     await cdp.send('Emulation.setDeviceMetricsOverride', {
-      width: MOBILE ? 360 : 420,
-      height: MOBILE ? 640 : 640,
+      width: metrics.width,
+      height: metrics.height,
       deviceScaleFactor: MOBILE ? 3 : 1,
       mobile: MOBILE
     })
@@ -393,6 +413,63 @@ async function main() {
     }
     const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, { awaitPromise: true })
     console.log(`saved: version=${stored.apiVersion || '-'} base=${stored.apiBase || '-'} era=${stored.apiFlavor || '-'}`)
+
+    if (SCENARIO === 'fullscreen-layout') {
+      const layout = await evaluate(
+        cdp,
+        `(() => {
+          const doc = document.documentElement
+          const editor = document.querySelector('.memo-editor')
+          const submit = document.querySelector('#submit')
+          const handle = document.querySelector('#editor-resize-handle')
+          const full = document.querySelector('#fullscreen')
+          const rect = (el) => (el ? el.getBoundingClientRect() : null)
+          const submitRect = rect(submit)
+          return {
+            viewport: [window.innerWidth, window.innerHeight],
+            pageScroll: doc.scrollHeight - window.innerHeight,
+            editorWidth: editor ? Math.round(editor.getBoundingClientRect().width) : 0,
+            editorHeight: editor ? Math.round(editor.getBoundingClientRect().height) : 0,
+            submitBottom: submitRect ? Math.round(submitRect.bottom) : 0,
+            submitRight: submitRect ? Math.round(submitRect.right) : 0,
+            handleHidden: handle ? getComputedStyle(handle).display === 'none' : true,
+            lang: (() => {
+              const el = document.querySelector('.lang-switcher')
+              const r = el ? el.getBoundingClientRect() : null
+              return r ? [Math.round(r.left), Math.round(r.top), Math.round(r.right)] : null
+            })(),
+            gear: (() => {
+              const el = document.querySelector('#blog_info_edit')
+              const r = el ? el.getBoundingClientRect() : null
+              return r ? [Math.round(r.left), Math.round(r.top), Math.round(r.right)] : null
+            })(),
+            fullButtonHidden: full ? getComputedStyle(full).display === 'none' : true
+          }
+        })()`
+      )
+      console.log('fullscreen layout:', JSON.stringify(layout))
+      if (SCREENSHOT) await capture(cdp, SCREENSHOT)
+
+      const okFull =
+        layout.pageScroll <= 1 &&
+        layout.editorWidth >= 600 &&
+        layout.editorWidth <= 900 &&
+        layout.editorHeight >= Math.round(layout.viewport[1] * 0.5) &&
+        layout.submitBottom <= layout.viewport[1] &&
+        layout.handleHidden &&
+        layout.fullButtonHidden &&
+        layout.lang && layout.lang[0] >= 0 && layout.lang[2] <= layout.viewport[0] &&
+        layout.gear && layout.gear[0] >= 0 && layout.gear[2] <= layout.viewport[0]
+      console.log(
+        okFull
+          ? 'PASS fullscreen fills the viewport without scrolling and keeps the header usable'
+          : 'FAIL fullscreen layout regressed'
+      )
+      if (!okFull) {
+        process.exitCode = 1
+        return
+      }
+    }
 
     if (MOBILE) {
       const layout = await evaluate(
@@ -507,10 +584,151 @@ async function main() {
           `(() => { const w = document.querySelector('#lock-wrapper'); if (w) w.classList.remove('!hidden'); return true })()`
         )
         await sleep(400)
-        await cdp.send('Page.enable').catch(() => {})
-        const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
-        fs.writeFileSync(SCREENSHOT, Buffer.from(shot.data, 'base64'))
-        console.log('screenshot:', SCREENSHOT)
+        await capture(cdp, SCREENSHOT)
+      }
+    }
+
+    if (SCENARIO === 'resize') {
+      const read = () =>
+        evaluate(
+          cdp,
+          `(() => {
+            const e = document.querySelector('.memo-editor')
+            const h = document.querySelector('#editor-resize-handle')
+            const r = e.getBoundingClientRect()
+            const hr = h.getBoundingClientRect()
+            return {
+              w: Math.round(r.width),
+              h: Math.round(r.height),
+              hx: Math.round(hr.left + hr.width / 2),
+              hy: Math.round(hr.top + hr.height / 2),
+              text: h.getAttribute('aria-valuetext') || ''
+            }
+          })()`
+        )
+      const storedSize = () =>
+        evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(['popupEditorSize'], r))`, { awaitPromise: true })
+
+      const before = await read()
+      // Drag the corner 120px right and 80px down with real mouse input.
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: before.hx, y: before.hy, button: 'left', buttons: 1, clickCount: 1 })
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hx + 120, y: before.hy + 80, button: 'left', buttons: 1 })
+      // Mid-drag the size must still be a preview (CSS transform), not a real
+      // popup resize on every pointermove.
+      const preview = await evaluate(
+        cdp,
+        `(() => {
+          const e = document.querySelector('.memo-editor')
+          const r = e.getBoundingClientRect()
+          return { transform: e.style.transform || '', width: Math.round(r.width) }
+        })()`
+      )
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: before.hx + 120, y: before.hy + 80, button: 'left', buttons: 0, clickCount: 1 })
+      await sleep(250)
+      const dragged = await read()
+      const persisted = (await storedSize()).popupEditorSize || null
+      console.log(
+        'resize drag:',
+        JSON.stringify({ before: [before.w, before.h], dragged: [dragged.w, dragged.h], persisted, preview: preview.transform })
+      )
+
+      // Keyboard: focus the handle and press ArrowRight (24px step).
+      await evaluate(cdp, `(() => { document.querySelector('#editor-resize-handle').focus(); return true })()`)
+      await evaluate(
+        cdp,
+        `(() => {
+          const h = document.querySelector('#editor-resize-handle')
+          h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+          return true
+        })()`
+      )
+      await sleep(120)
+      const afterKey = await read()
+
+      // Double click resets to the base size.
+      await evaluate(
+        cdp,
+        `(() => {
+          document.querySelector('#editor-resize-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+          return true
+        })()`
+      )
+      await sleep(120)
+      const reset = await read()
+
+      const okResize =
+        Boolean(preview.transform) &&
+        Math.abs(dragged.w - before.w - 120) <= 4 &&
+        Math.abs(dragged.h - before.h - 80) <= 4 &&
+        persisted &&
+        Math.abs(persisted.width - dragged.w) <= 4 &&
+        Math.abs(persisted.height - dragged.h) <= 4 &&
+        Math.abs(afterKey.w - dragged.w - 24) <= 2 &&
+        afterKey.text &&
+        Math.abs(reset.w - before.w) <= 2 &&
+        Math.abs(reset.h - before.h) <= 2
+      console.log(
+        okResize
+          ? 'PASS drag resizes each axis, keyboard nudges, double click resets'
+          : 'FAIL resize behaviour regressed'
+      )
+      if (!okResize) process.exitCode = 1
+      return
+    }
+
+    if (SCENARIO === 'drop-multi') {
+      // Real drop event with two files, dispatched on the editor (not the
+      // textarea) to prove the whole editor accepts drops.
+      await evaluate(
+        cdp,
+        `(() => {
+          const area = document.querySelector('textarea[name=text]')
+          area.value = 'draft kept after upload'
+          area.dispatchEvent(new Event('input', { bubbles: true }))
+          return true
+        })()`
+      )
+      const active = await evaluate(
+        cdp,
+        `(() => {
+          const editor = document.querySelector('.memo-editor')
+          const dt = new DataTransfer()
+          const bytes = Uint8Array.from(atob(${JSON.stringify(PNG_BASE64)}), (c) => c.charCodeAt(0))
+          dt.items.add(new File([bytes], 'one.png', { type: 'image/png' }))
+          dt.items.add(new File([bytes], 'two.png', { type: 'image/png' }))
+          editor.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }))
+          editor.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }))
+          const highlighted = editor.classList.contains('drop-active')
+          editor.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+          return { highlighted, stillActive: editor.classList.contains('drop-active') }
+        })()`
+      )
+      const uploaded = await waitFor(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length >= 2)))`,
+        20000
+      )
+      const state = await evaluate(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(['resourceIdList', 'open_content', 'open_action'], r))`,
+        { awaitPromise: true }
+      )
+      console.log('drop:', JSON.stringify({ ...active, count: (state.resourceIdList || []).length, draft: state.open_content }))
+
+      const okDrop =
+        active.highlighted &&
+        !active.stillActive &&
+        uploaded &&
+        (state.resourceIdList || []).length === 2 &&
+        state.open_content === 'draft kept after upload'
+      console.log(
+        okDrop
+          ? 'PASS both dropped files uploaded, highlight cleared, draft preserved'
+          : 'FAIL drop handling regressed'
+      )
+      if (!okDrop) {
+        process.exitCode = 1
+        return
       }
     }
 
@@ -542,7 +760,13 @@ async function main() {
     const found = memos.filter((m) => String(m.content || '').indexOf(TEXT) !== -1)
 
     let ok = false
-    if (SCENARIO === 'upload') {
+    if (SCENARIO === 'drop-multi') {
+      const target = memos.filter((m) => String(m.content || '').indexOf(TEXT) !== -1)
+      const count = target.length ? (target[0].attachments || []).length : 0
+      const okDropMemo = count >= 2
+      console.log(okDropMemo ? `PASS memo carries ${count} attachments` : 'FAIL memo did not carry both attachments')
+      if (!okDropMemo) process.exitCode = 1
+    } else if (SCENARIO === 'upload') {
       const withAttachment = memos.filter((m) => (m.attachments || []).length > 0)
       ok = withAttachment.length >= 1
       console.log(

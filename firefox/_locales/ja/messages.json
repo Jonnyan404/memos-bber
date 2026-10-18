@@ -226,5 +226,11 @@
   },
   "lockPublicBlocked": {
     "message": "このサーバーは公開メモを禁止しているため「公開」は選択できません"
+  },
+  "picDropUnsupported": {
+    "message": "アップロードできないファイルです（フォルダは対象外）"
+  },
+  "picDropSkipped": {
+    "message": "一部の項目はスキップされました（フォルダはアップロードできません）"
   }
 }

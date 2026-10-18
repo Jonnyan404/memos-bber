@@ -131,6 +131,16 @@ for (const bundle of BUNDLES) {
   check(bundle, 'no legacy adapter symbols', !/MemosApi(Modern|V023|V020V021)/.test(oper) && !/memosApi\.(adapter|modern|v0)/.test(html))
   check(
     bundle,
+    'editor supports keyboard resize',
+    oper.includes("handle.addEventListener('keydown', onKeyDown)") && oper.includes("'ArrowRight'")
+  )
+  check(
+    bundle,
+    'drop uploads every file',
+    oper.includes('function uploadFiles(') && oper.includes('drop-active')
+  )
+  check(
+    bundle,
     'public option can be blocked',
     oper.includes('applyVisibilityPolicy(') &&
       oper.includes("addClass('lock-blocked')") &&
@@ -146,7 +156,14 @@ for (const bundle of BUNDLES) {
     const localePath = path.join(dir, '_locales', locale, 'messages.json')
     try {
       const data = JSON.parse(read(localePath))
-      const required = ['errPublicForbidden', 'errApiRemoved', 'errAuth', 'serverVersionLabel', 'lockPublicBlocked']
+      const required = [
+        'errPublicForbidden',
+        'errApiRemoved',
+        'errAuth',
+        'serverVersionLabel',
+        'lockPublicBlocked',
+        'picDropUnsupported'
+      ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))
     } catch (err) {
@@ -174,8 +191,18 @@ const adapterHashes = BUNDLES.map((b) => [b, hash(path.join(ROOT, b, 'js/compat/
 const unique = new Set(adapterHashes.map(([, h]) => h))
 check('shared', 'adapter identical in all bundles', unique.size === 1, adapterHashes.map(([b, h]) => `${b}=${h}`).join(' '))
 
-// chrome and edge are expected to share oper.js; firefox differs intentionally
-check('shared', 'chrome/edge oper.js identical', hash(path.join(ROOT, 'chrome/js/oper.js')) === hash(path.join(ROOT, 'edge/js/oper.js')))
+// The popup is one implementation shared by all three bundles now that the
+// Firefox-only drag preview was folded into the common resize code.
+const popupFiles = ['js/oper.js', 'popup.html', 'css/main.css']
+for (const file of popupFiles) {
+  const hashes = BUNDLES.map((b) => [b, hash(path.join(ROOT, b, file))])
+  check(
+    'shared',
+    `${file} identical in all bundles`,
+    new Set(hashes.map(([, h]) => h)).size === 1,
+    hashes.map(([b, h]) => `${b}=${h.slice(0, 8)}`).join(' ')
+  )
+}
 
 for (const row of rows) {
   console.log(`${row.ok ? 'PASS' : 'FAIL'}  ${row.bundle.padEnd(7)} ${row.name}${row.detail ? '  (' + row.detail + ')' : ''}`)
