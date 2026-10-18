@@ -595,6 +595,29 @@ function refreshVisibilityPolicy(info) {
   }, function () {})
 }
 
+// Header links are configured in js/config.js, which is the single place to
+// change a URL. Each entry expects a specific host: a typo keeps that entry
+// hidden instead of shipping a dead button. applyStaticI18n() fills the label
+// and tooltip, so the copy follows the language switcher.
+const HEADER_LINKS = [
+  { id: 'kofi', key: 'kofi', pattern: /^https:\/\/ko-fi\.com\/[\w.-]+\/?$/ },
+  { id: 'github', key: 'github', pattern: /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/ }
+]
+
+function initHeaderLinks() {
+  const links = (window.EXT_LINKS || {})
+  for (const entry of HEADER_LINKS) {
+    const el = document.getElementById(entry.id)
+    if (!el) continue
+    const url = links[entry.key]
+    const valid = typeof url === 'string' && entry.pattern.test(url)
+    el.hidden = !valid
+    if (valid) el.href = url
+  }
+}
+
+initHeaderLinks()
+
 function updateLockNowText(lockType) {
   if (lockType === 'PUBLIC') {
     $('#lock-now').text(msg('lockPublic'))

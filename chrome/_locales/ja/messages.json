@@ -235,5 +235,14 @@
   },
   "sendPageTo": {
     "message": "このページを Memos に送る"
+  },
+  "kofiLabel": {
+    "message": "応援"
+  },
+  "kofiTip": {
+    "message": "Ko-fi でコーヒーをごちそうする"
+  },
+  "githubTip": {
+    "message": "GitHub でソースコードを見る"
   }
 }

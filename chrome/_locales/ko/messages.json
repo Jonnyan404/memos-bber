@@ -235,5 +235,14 @@
   },
   "sendPageTo": {
     "message": "이 페이지를 Memos로 보내기"
+  },
+  "kofiLabel": {
+    "message": "후원"
+  },
+  "kofiTip": {
+    "message": "Ko-fi에서 커피 한 잔 후원하기"
+  },
+  "githubTip": {
+    "message": "GitHub에서 소스 코드 보기"
   }
 }

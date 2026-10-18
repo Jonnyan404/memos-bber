@@ -74,6 +74,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `fullscreen-layout` | 全屏页（`--page=popup.html?mode=full`）无整页滚动、编辑区 880 上限且占满剩余高度、发送按钮在视口内、语言/设置按钮仍在视口内 |
 | `fullscreen-panel` | 全屏页列宽可拖拽并单独记忆（`fullscreenEditorWidth`，双击复位）；结果列表在宽屏位于编辑器右侧、窄屏在下方且不会超出视口 |
 | `drop-text` | 拖入 `text/uri-list` / `text/plain` 会追加进草稿（URI 优先、去注释行、空行分隔），并同步写入 `open_content` |
+| `header-links` | 头部 Ko-fi 赞赏与 GitHub 两个图标入口可见、有可访问名称与悬停说明、不与标题和其他头部控件重叠，点击后各自在真实浏览器里打开配置的页面 |
 
 ## 4. 它做了什么 / 坑
 
@@ -98,6 +99,9 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
   防死代码堆积；内置库（jquery/dayjs/locale）不参与 lint。
 - `npm run audit` 只审计**生产依赖**（本项目为 0）：`web-ext` 的传递依赖有开发期告警，
   它不随扩展发布，也不参与 `web-ext lint` 的打包路径。
+- 头部外链（Ko-fi 赞赏 / GitHub）集中在三端共用的 `js/config.js`：`bundles.mjs` 校验该文件
+  三端字节一致、URL 域名与格式正确、oper.js 按域名校验后才显示入口（配置坏了就隐藏而不是
+  出现死按钮）；每个 UI 场景都会断言两个入口可见、有可访问名称、且不与标题/语言/设置控件重叠。
 - `.github/workflows/verify.yml`：
   - 每次 push / PR：bundle 静态检查 + 矩阵子集（0.15 / 0.23 / 0.26 / 0.31 / 26.10）
   - 每晚 18:00 UTC：完整 16 版本矩阵

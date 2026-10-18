@@ -235,5 +235,14 @@
   },
   "sendPageTo": {
     "message": "发送本页到 Memos"
+  },
+  "kofiLabel": {
+    "message": "赞赏"
+  },
+  "kofiTip": {
+    "message": "在 Ko-fi 请我喝杯咖啡"
+  },
+  "githubTip": {
+    "message": "在 GitHub 上查看源码"
   }
 }

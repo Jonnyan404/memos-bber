@@ -372,6 +372,88 @@ async function main() {
     )
     if (!ready) throw new Error('popup scripts did not initialize')
 
+    // The header links are part of every popup, so check them in every run:
+    // each must be revealed, labelled for screen readers, and stay clear of the
+    // title on the left and the language / settings controls on the right.
+    const header = await evaluate(
+      cdp,
+      `(() => {
+        const read = (id) => {
+          const el = document.getElementById(id)
+          if (!el) return { missing: true }
+          const box = el.getBoundingClientRect()
+          const style = getComputedStyle(el)
+          return {
+            hidden: el.hasAttribute('hidden'),
+            href: el.href,
+            target: el.target,
+            rel: el.rel,
+            text: (el.textContent || '').trim(),
+            aria: el.getAttribute('aria-label') || '',
+            title: el.getAttribute('title') || '',
+            display: style.display,
+            left: Math.round(box.left),
+            right: Math.round(box.right),
+            width: Math.round(box.width),
+            height: Math.round(box.height)
+          }
+        }
+        const rect = (sel) => document.querySelector(sel).getBoundingClientRect()
+        return {
+          kofi: read('kofi'),
+          github: read('github'),
+          titleRight: Math.round(rect('.title').right),
+          langLeft: Math.round(rect('#lang_switcher').left),
+          gearLeft: Math.round(rect('#blog_info_edit').left)
+        }
+      })()`
+    )
+    const linkOk = (entry, host) =>
+      !entry.missing &&
+      entry.hidden === false &&
+      entry.display !== 'none' &&
+      host.test(entry.href) &&
+      entry.target === '_blank' &&
+      /noopener/.test(entry.rel) &&
+      entry.aria.length > 0 &&
+      entry.title.length > 0 &&
+      entry.width >= 24 &&
+      entry.height >= 24 &&
+      entry.left >= header.titleRight &&
+      entry.right <= Math.min(header.langLeft, header.gearLeft)
+    const headerOk =
+      linkOk(header.kofi, /^https:\/\/ko-fi\.com\//) && linkOk(header.github, /^https:\/\/github\.com\//)
+    console.log(
+      (headerOk ? 'PASS' : 'FAIL') +
+        ' header links (Ko-fi + GitHub) are visible, labelled and clear of the other controls',
+      JSON.stringify(header)
+    )
+    if (!headerOk) process.exitCode = 1
+
+    if (SCENARIO === 'header-links') {
+      if (!headerOk) return
+      // Plain links open the tab on their own, so keyboard and middle-click
+      // work without extra code. Verify each tab actually appears.
+      for (const [id, host] of [
+        ['kofi', 'ko-fi\\.com'],
+        ['github', 'github\\.com']
+      ]) {
+        await evaluate(cdp, `(() => { document.getElementById('${id}').click(); return true })()`)
+        const opened = await waitFor(
+          cdp,
+          `new Promise((r) => chrome.tabs.query({}, (tabs) => r((tabs || []).some((t) => new RegExp('^https:\\\\/\\\\/${host}\\\\/').test(t.url || t.pendingUrl || '')))))`,
+          10000
+        )
+        console.log(opened ? `PASS #${id} opens its configured page` : `FAIL #${id} did not open ${host}`)
+        if (!opened) {
+          process.exitCode = 1
+          return
+        }
+      }
+      if (SCREENSHOT) await capture(cdp, SCREENSHOT)
+      return
+    }
+
     // --- settings: fill URL + token, save, wait for storage
     const filled = await evaluate(
       cdp,

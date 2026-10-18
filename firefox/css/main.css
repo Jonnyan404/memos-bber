@@ -535,6 +535,80 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     font-weight: 600;
 }
 
+/* Header links (support + source). Both are 24px icons next to the language
+   switcher: no text, so a longer localised label can never push them into
+   another control, and the header stays as quiet as before. They differ in
+   colour on purpose -- red ring for the donation entry, neutral grey for the
+   repository -- which is what makes them tellable apart at 24px. */
+.header-links{
+    position: absolute;
+    right: 6.25rem;
+    top: .55rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.header-links a{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    box-sizing: border-box;
+    border-radius: 999px;
+    text-decoration: none;
+}
+
+/* Icon-only links have no visible text, so they need an accessible name and a
+   hover tooltip; both come from the localised strings in i18n.js. */
+.header-links a svg{
+    width: 16px;
+    height: 16px;
+}
+
+/* Author styles beat the UA [hidden] rule, so state it here. */
+.header-links a[hidden]{
+    display: none;
+}
+
+.header-links a:focus-visible{
+    outline: 2px solid rgb(22,163,74);
+    outline-offset: 2px;
+}
+
+/* Ko-fi support entry: brand red, darkened to rgb(179,38,30) for contrast --
+   the real brand red #ff5e5b is only ~2.9:1 on white. */
+.kofi-link{
+    border: 1px solid rgb(255 94 91 / .55);
+    background-color: rgb(255,255,255);
+    color: rgb(179,38,30);
+}
+
+.kofi-link:hover{
+    border-color: rgb(255 94 91);
+    background-color: rgb(255 241 240);
+}
+
+/* GitHub entry: neutral grey, like the other header icons. */
+.header-icon-link{
+    border: none;
+    background-color: transparent;
+    color: #666;
+    opacity: .65;
+}
+
+.header-icon-link:hover{
+    opacity: 1;
+    background-color: rgb(243,244,246);
+}
+
+.header-icon-link:focus-visible{
+    outline: 2px solid rgb(22,163,74);
+    outline-offset: 2px;
+    opacity: 1;
+}
+
 
 .tip{
     margin-left: 36%;
@@ -795,5 +869,13 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     #editor-resize-handle {
         width: 22px;
         height: 22px;
+    }
+    /* Touch-sized: a 24px icon is a ~15dp target on a phone. */
+    .header-links {
+        gap: .25rem;
+    }
+    .header-links a {
+        width: 28px;
+        height: 28px;
     }
 }

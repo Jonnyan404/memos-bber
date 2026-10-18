@@ -107,8 +107,24 @@ for (const bundle of BUNDLES) {
   check(bundle, 'all popup scripts resolve', missing.length === 0, missing.join(','))
   check(bundle, 'loads unified adapter only', scripts.includes('js/compat/memosApi.js') && !scripts.some((s) => /memosApi\.(adapter|modern|v0)/.test(s)), scripts.filter((s) => s.includes('compat')).join(','))
 
+  // The support entry has to be a real link (keyboard / middle-click work, no
+  // script needed) and its URL must come from config.js, so the three bundles
+  // cannot drift and a URL change stays a one-line edit.
+  const headerLink = (id) => new RegExp(`<a[^>]*id="${id}"[^>]*>`)
+  check(
+    bundle,
+    'header links are real links',
+    ['kofi', 'github'].every(
+      (id) =>
+        headerLink(id).test(html) &&
+        new RegExp(`<a[^>]*id="${id}"[^>]*target="_blank"[^>]*>`).test(html) &&
+        new RegExp(`<a[^>]*id="${id}"[^>]*rel="noopener noreferrer"[^>]*>`).test(html)
+    )
+  )
+  check(bundle, 'loads config.js', scripts.includes('js/config.js'))
+
   // syntax-compile the runtime files (parse only)
-  for (const file of ['js/oper.js', 'js/compat/memosApi.js', 'js/background.js']) {
+  for (const file of ['js/oper.js', 'js/compat/memosApi.js', 'js/background.js', 'js/config.js']) {
     const target = path.join(dir, file)
     if (!exists(target)) {
       check(bundle, file + ' exists', false)
@@ -152,6 +168,27 @@ for (const bundle of BUNDLES) {
   )
   const bg = exists(path.join(dir, 'js/background.js')) ? read(path.join(dir, 'js/background.js')) : ''
   const message = exists(path.join(dir, 'js/message.js')) ? read(path.join(dir, 'js/message.js')) : ''
+  const config = exists(path.join(dir, 'js/config.js')) ? read(path.join(dir, 'js/config.js')) : ''
+
+  // One source for the donation URL, and oper.js only reveals the entry after
+  // validating it -- otherwise a broken config would ship a dead button.
+  check(
+    bundle,
+    'header URLs configured once',
+    /EXT_LINKS\s*=\s*Object\.freeze\(/.test(config) &&
+      /kofi:\s*'https:\/\/ko-fi\.com\/[\w.-]+\/?/.test(config) &&
+      /github:\s*'https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?/.test(config)
+  )
+  check(
+    bundle,
+    'header entries wired from config',
+    oper.includes('const HEADER_LINKS =') &&
+      oper.includes('initHeaderLinks()') &&
+      oper.includes('EXT_LINKS') &&
+      oper.includes('el.hidden = !valid') &&
+      /'kofi'/.test(oper) &&
+      /'github'/.test(oper)
+  )
 
   // XSS regression guards: memo content and server messages are untrusted.
   check(bundle, 'memo cards built as DOM', oper.includes('function createMemoCard') && oper.includes('function renderMemoContent'))
@@ -202,7 +239,10 @@ for (const bundle of BUNDLES) {
         'serverVersionLabel',
         'lockPublicBlocked',
         'picDropUnsupported',
-        'sendPageTo'
+        'sendPageTo',
+        'kofiLabel',
+        'kofiTip',
+        'githubTip'
       ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))
@@ -233,7 +273,7 @@ check('shared', 'adapter identical in all bundles', unique.size === 1, adapterHa
 
 // The popup is one implementation shared by all three bundles now that the
 // Firefox-only drag preview was folded into the common resize code.
-const popupFiles = ['js/oper.js', 'js/background.js', 'popup.html', 'css/main.css']
+const popupFiles = ['js/oper.js', 'js/background.js', 'js/config.js', 'popup.html', 'css/main.css']
 for (const file of popupFiles) {
   const hashes = BUNDLES.map((b) => [b, hash(path.join(ROOT, b, file))])
   check(

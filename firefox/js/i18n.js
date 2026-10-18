@@ -104,6 +104,19 @@ function setTitle(id, messageKey) {
 	if (el) el.title = t(messageKey)
 }
 
+// Icon-only links have no visible text, so they need a tooltip and an
+// accessible name. The name stays short ("Support") while the tooltip can
+// explain the destination. Only set either when the key resolves: an empty
+// aria-label would hide the link from screen readers instead of exposing it.
+function setLabelledLinkTitle(id, messageKey, labelKey) {
+	const el = document.getElementById(id)
+	if (!el) return
+	const tip = t(messageKey)
+	const label = labelKey ? t(labelKey) : tip
+	if (tip) el.title = tip
+	if (label) el.setAttribute('aria-label', label)
+}
+
 function applyStaticI18n() {
 	setText('saveSettings', 'saveBtn')
 	setText('saveTag', 'saveBtn')
@@ -144,6 +157,11 @@ function applyStaticI18n() {
 	setTitle('langToggle', 'tipLanguage')
 	const langToggle = document.getElementById('langToggle')
 	if (langToggle) langToggle.setAttribute('aria-label', t('tipLanguage'))
+
+	// Header links: the labels are localised, the URLs come from config.js
+	// (oper.js wires them and decides whether each entry is safe to show).
+	setLabelledLinkTitle('kofi', 'kofiTip', 'kofiLabel')
+	setLabelledLinkTitle('github', 'githubTip')
 
 	// Native hover tooltips (title)
 	setTitle('opensite', 'tipOpenSite')

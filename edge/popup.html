@@ -33,6 +33,35 @@
         <button id="langOptionKo" class="lang-menu-item" type="button" data-lang="ko" role="menuitemradio" aria-checked="false"></button>
       </div>
     </div>
+    <!-- External entries. The URLs live in js/config.js (single source for all
+         three bundles); oper.js reveals each one only once its link validates. -->
+    <div id="header_links" class="header-links">
+      <a
+        id="kofi"
+        class="kofi-link"
+        href=""
+        target="_blank"
+        rel="noopener noreferrer"
+        hidden
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <path d="M4 8h12v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" />
+          <path d="M16 9.5h1.5a2.75 2.75 0 0 1 0 5.5H16" />
+        </svg>
+      </a>
+      <a
+        id="github"
+        class="header-icon-link"
+        href=""
+        target="_blank"
+        rel="noopener noreferrer"
+        hidden
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+        </svg>
+      </a>
+    </div>
     <div id="blog_info_edit"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" class="icon" viewBox="0 0 1024 1024">
       <path d="M914 432c-5-26-21-43-41-43h-4c-54 0-99-44-99-99 0-17 9-37 9-38 10-22 2-50-18-65l-103-57h-1c-21-9-49-4-64 12-12 12-50 44-79 44s-68-33-79-45a60 60 0 0 0-64-13l-106 58-2 1a54 54 0 0 0-18 65c0 1 9 21 9 38 0 55-45 99-99 99h-5c-19 0-35 17-40 43 0 2-9 45-9 80s9 79 9 81c5 25 21 42 41 42h4c54 0 99 45 99 99 0 18-9 37-9 38-10 23-2 51 18 65l101 56 1 1c21 9 49 3 65-13 14-15 52-47 80-47 30 0 69 35 81 48a58 58 0 0 0 64 14l104-58 2-1c20-14 28-42 18-65 0-1-9-20-9-38 0-54 45-99 99-99h5c19 0 35-17 40-42 0-2 9-46 9-81s-9-78-9-80m-51 80c0 23-5 52-7 64a158 158 0 0 0-134 215l-89 49c-4-5-17-18-35-31-31-23-61-35-88-35s-57 12-88 34c-17 13-30 26-34 31l-86-48a159 159 0 0 0-134-215c-2-12-7-41-7-64 0-22 5-51 7-64a157 157 0 0 0 134-214l91-50c4 4 17 17 35 29 30 22 59 33 86 33s55-11 85-32c18-13 31-25 35-29l88 49a159 159 0 0 0 134 214c2 13 7 42 7 64"/>
       <path d="M510 366a146 146 0 1 0 1 292 146 146 0 0 0-1-292m87 146a87 87 0 1 1-173-1 87 87 0 0 1 173 1"/>
@@ -179,6 +208,7 @@
 
   <input type="file" id="inFile" style="display:none;">
 
+  <script src="../js/config.js"></script>
   <script src="../js/i18n.js"></script>
   <script src="../js/jquery.min.js"></script>
   <script src="../js/message.js"></script>

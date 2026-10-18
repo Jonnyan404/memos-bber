@@ -235,5 +235,14 @@
   },
   "sendPageTo": {
     "message": "Send this page to Memos"
+  },
+  "kofiLabel": {
+    "message": "Support"
+  },
+  "kofiTip": {
+    "message": "Buy me a coffee on Ko-fi"
+  },
+  "githubTip": {
+    "message": "View the source on GitHub"
   }
 }
