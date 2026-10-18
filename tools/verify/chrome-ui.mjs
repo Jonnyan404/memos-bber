@@ -763,9 +763,8 @@ async function main() {
     if (SCENARIO === 'drop-multi') {
       const target = memos.filter((m) => String(m.content || '').indexOf(TEXT) !== -1)
       const count = target.length ? (target[0].attachments || []).length : 0
-      const okDropMemo = count >= 2
-      console.log(okDropMemo ? `PASS memo carries ${count} attachments` : 'FAIL memo did not carry both attachments')
-      if (!okDropMemo) process.exitCode = 1
+      ok = count >= 2
+      console.log(ok ? `PASS memo carries ${count} attachments` : 'FAIL memo did not carry both attachments')
     } else if (SCENARIO === 'upload') {
       const withAttachment = memos.filter((m) => (m.attachments || []).length > 0)
       ok = withAttachment.length >= 1
