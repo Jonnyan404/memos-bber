@@ -127,6 +127,7 @@ async function main() {
       '--no-default-browser-check',
       `--disable-extensions-except=${EXT_DIR}`,
       `--load-extension=${EXT_DIR}`,
+      ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
       'about:blank'
     ],
     { stdio: 'ignore' }
