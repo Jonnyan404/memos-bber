@@ -101,20 +101,54 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" --subpath /memos
 ```
 
-## 7. Firefox（MV2）
+## 7. Firefox（MV3 + Android）
 
-`tools/verify/firefox-smoke.mjs` 用 WebDriver BiDi 的 `webExtension.install` 把 `firefox/` 装进真实 Firefox，
-断言扩展被接受（ID 与 manifest 版本一致）：
+Manifest V3，但**背景用事件页而不是 service worker**——Firefox for Android 不支持
+`background.service_worker`，所以 `background.scripts` 是桌面与移动端都能跑的唯一选择：
 
-```bash
-FIREFOX_PATH="/Applications/Firefox Developer Edition.app/Contents/MacOS/firefox" \
-  node tools/verify/firefox-smoke.mjs
+```json
+"background": { "scripts": ["js/background.js"] },
+"permissions": ["tabs", "scripting", "storage", "activeTab", "contextMenus"],
+"host_permissions": ["http://*/*", "https://*/*"],
+"browser_specific_settings": {
+  "gecko": { "id": "...", "strict_min_version": "142.0", "data_collection_permissions": { "required": ["none"] } },
+  "gecko_android": { "strict_min_version": "142.0" }
+}
 ```
 
-**UI 自动化受限（上游限制，不是配置问题）**：Firefox 的 BiDi 拒绝导航到 `moz-extension://`
-（`not allowed in this context`），Puppeteer / Playwright 也都不支持给 Firefox 装扩展。
-因此 Firefox 的弹窗交互目前只能手工验证：
-`web-ext run --source-dir firefox` 后点扩展图标。逻辑层由三端字节一致的 adapter + 16 版本矩阵覆盖。
+142 是 `data_collection_permissions`（桌面 140 / Android 142）要求的版本下限，低于它 AMO 会报
+`KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION`。
+
+三层验证：
+
+```bash
+# 1) AMO 同一套校验器：0 error 才能上传
+npx web-ext lint --source-dir firefox
+
+# 2) 真实 Firefox 安装（ID / 版本 / MV3 / 事件页 / Android 下限）
+FIREFOX_PATH="/path/to/firefox" node tools/verify/firefox-smoke.mjs
+
+# 3) 事件页在「桌面」和「Android（无 contextMenus）」两种 chrome 对象下的加载
+node tools/verify/unit.mjs
+```
+
+`unit.mjs` 里用 vm + mock chrome 跑 `background.js`：桌面应创建 3 个菜单，Android 形态下
+（`contextMenus` 整个不存在）顶层注册不得抛错——这正是 Android 上最容易炸的地方。
+
+**UI 自动化受限（上游限制）**：BiDi 拒绝导航到 `moz-extension://`（`not allowed in this context`），
+Puppeteer / Playwright 也不支持给 Firefox 装扩展，所以 Firefox 的弹窗交互仍需手工
+`web-ext run --source-dir firefox`。布局与交互由 Chrome harness 覆盖——两端的 HTML/CSS/JS 是同一份文件，
+Chrome MV3 的 CSP 与 Firefox 等价，所以 `chrome-ui.mjs` 能代表 Firefox 的行为。
+
+移动端布局用同一套 harness 在 360×640、`pointer: coarse` 下验证：
+
+```bash
+node tools/verify/chrome-ui.mjs --url http://127.0.0.1:15400/ --token "$TOKEN" --mobile
+```
+
+断言：无横向溢出（`scrollWidth <= viewport`）、`.body` 的 `min-width` 被移动端规则置 0、
+可见性选择器与发送按钮高度 ≥ 40px、选择器右边缘不得滑进发送按钮下方，并照常发布一条 memo。
+CSS 用 `@media (pointer: coarse)` 隔离，桌面弹窗外观不受影响（可用 `--screenshot out.png` 目视复核）。
 
 ## 8. 可见性策略（禁止公开备忘录）
 

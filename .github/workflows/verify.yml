@@ -96,6 +96,8 @@ jobs:
           node-version: '22'
       - name: Install Firefox
         run: npx --yes @puppeteer/browsers install firefox@stable --path "$RUNNER_TEMP/ff"
+      - name: Lint with the AMO validator
+        run: npx --yes web-ext lint --source-dir firefox
       - name: Install bundle into real Firefox (BiDi)
         run: |
           FIREFOX_PATH=$(find "$RUNNER_TEMP/ff" -type f -name firefox | head -1)
@@ -118,6 +120,8 @@ jobs:
             extra: '--extension edge'
           - label: upload
             extra: '--scenario upload'
+          - label: mobile
+            extra: '--mobile'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

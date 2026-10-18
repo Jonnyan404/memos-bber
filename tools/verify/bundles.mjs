@@ -49,6 +49,56 @@ for (const bundle of BUNDLES) {
   const icons = Object.values(manifest.icons || {})
   check(bundle, 'icons exist', icons.length > 0 && icons.every((icon) => exists(path.join(dir, icon))), icons.join(','))
 
+  // Firefox ships MV3 with an event page: service workers are unsupported on
+  // Firefox for Android, so `background.scripts` is the portable choice.
+  if (bundle === 'firefox') {
+    check(bundle, 'manifest is MV3', manifest.manifest_version === 3, String(manifest.manifest_version))
+    check(bundle, 'uses action (not browser_action)', Boolean(manifest.action) && !manifest.browser_action)
+    check(
+      bundle,
+      'background is an event page',
+      Array.isArray(manifest.background && manifest.background.scripts) &&
+        !(manifest.background && manifest.background.service_worker),
+      JSON.stringify(manifest.background || null)
+    )
+    const hostPermissions = manifest.host_permissions || []
+    const apiPermissions = manifest.permissions || []
+    check(
+      bundle,
+      'host permissions separated',
+      hostPermissions.length > 0 && !apiPermissions.some((p) => /^https?:\/\//.test(p)),
+      apiPermissions.join(',')
+    )
+    const gecko = (manifest.browser_specific_settings || {}).gecko || {}
+    const android = (manifest.browser_specific_settings || {}).gecko_android || {}
+    check(bundle, 'declares Firefox id', Boolean(gecko.id), gecko.id || '')
+    check(
+      bundle,
+      'data collection declared',
+      Boolean(gecko.data_collection_permissions && gecko.data_collection_permissions.required),
+      JSON.stringify(gecko.data_collection_permissions || null)
+    )
+    check(
+      bundle,
+      'android support declared',
+      Boolean(android.strict_min_version) &&
+        Boolean(gecko.strict_min_version) &&
+        Number(android.strict_min_version) >= 142 &&
+        Number(gecko.strict_min_version) >= 142,
+      `desktop=${gecko.strict_min_version || '-'} android=${android.strict_min_version || '-'}`
+    )
+    check(
+      bundle,
+      'background handles action/openPopup',
+      read(path.join(dir, 'js/background.js')).includes('chrome.action')
+    )
+    check(
+      bundle,
+      'mobile CSS guard present',
+      read(path.join(dir, 'css/main.css')).includes('pointer: coarse')
+    )
+  }
+
   // every <script src> in popup.html must resolve
   const popupPath = popup ? path.join(dir, popup) : ''
   const html = popupPath && exists(popupPath) ? read(popupPath) : ''

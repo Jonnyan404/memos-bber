@@ -44,10 +44,6 @@ function pageReadSelectionText() {
   }
 }
 
-function pageReadSelectionTextSource() {
-  return `(${pageReadSelectionText.toString()})()`
-}
-
 function getSelectionTextFromTab(tabId, fallbackText) {
   return new Promise((resolve) => {
     const fallback = typeof fallbackText === 'string' ? fallbackText : ''
@@ -79,37 +75,32 @@ function getSelectionTextFromTab(tabId, fallbackText) {
       }
     }
 
-    if (chrome.tabs && typeof chrome.tabs.executeScript === 'function') {
-      try {
-        chrome.tabs.executeScript(tabId, { code: pageReadSelectionTextSource() }, (results) => {
-          if (chrome.runtime.lastError) {
-            resolve(fallback)
-            return
-          }
-          const text = Array.isArray(results) && typeof results[0] === 'string' ? results[0] : ''
-          resolve(text || fallback)
-        })
-        return
-      } catch (_) {
-        // Ignore and fall back to the original selection text below.
-      }
-    }
-
+    // No `tabs.executeScript` fallback: MV3 removed it, and `scripting` is a
+    // declared permission, so only an outdated build would reach this line.
     resolve(fallback)
   })
 }
 
+function actionApi() {
+  // MV3 exposes `action`; MV2 exposed `browserAction`. Keep both so the same
+  // file still works if it is dropped into an older Firefox build.
+  return (chrome.action && typeof chrome.action.openPopup === 'function')
+    ? chrome.action
+    : (chrome.browserAction && typeof chrome.browserAction.openPopup === 'function' ? chrome.browserAction : null)
+}
+
 function tryOpenActionPopup(tab) {
   try {
-    if (!chrome.browserAction || typeof chrome.browserAction.openPopup !== 'function') return
+    const api = actionApi()
+    if (!api) return
     const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : undefined
 
     const open = () => {
       try {
         if (typeof windowId === 'number') {
-          chrome.browserAction.openPopup({ windowId }, () => void chrome.runtime.lastError)
+          api.openPopup({ windowId }, () => void chrome.runtime.lastError)
         } else {
-          chrome.browserAction.openPopup({}, () => void chrome.runtime.lastError)
+          api.openPopup({}, () => void chrome.runtime.lastError)
         }
       } catch (_) {
         // best-effort only
@@ -169,20 +160,31 @@ async function refreshContextMenus() {
   await updateContextMenu('Memos-send-image', { title: await t('sendImageTo') })
 }
 
+// Firefox for Android has no context menu surface for extensions; the API may
+// be missing or throw, and that must not break the rest of onInstalled.
+function createContextMenu(options) {
+  try {
+    if (!chrome.contextMenus || typeof chrome.contextMenus.create !== 'function') return
+    chrome.contextMenus.create(options, () => void chrome.runtime.lastError)
+  } catch (_) {
+    // best-effort: desktop-only feature
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+  createContextMenu({
     type: 'normal',
     title: chrome.i18n.getMessage('sendTo'),
     id: 'Memos-send-selection',
     contexts: ['selection']
   })
-  chrome.contextMenus.create({
+  createContextMenu({
     type: 'normal',
     title: chrome.i18n.getMessage('sendLinkTo'),
     id: 'Memos-send-link',
     contexts: ['link', 'page']
   })
-  chrome.contextMenus.create({
+  createContextMenu({
     type: 'normal',
     title: chrome.i18n.getMessage('sendImageTo'),
     id: 'Memos-send-image',
@@ -201,11 +203,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   refreshContextMenus()
 })
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+function onContextMenuClicked(info, tab) {
   const appendContent = (tempCont, { openPopup } = { openPopup: false }) => {
     chrome.storage.sync.get({ open_action: 'save_text', open_content: '' }, function (items) {
       if (items.open_action === 'upload_image') {
-        t('picPending').then((m) => alert(m))
+        // No alert() in an event page: surface the pending upload by opening
+        // the popup, which already shows the upload progress and the notice.
+        if (openPopup) tryOpenActionPopup(tab)
         return
       }
 
@@ -240,4 +244,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'Memos-send-image') {
     appendContent(`![](${info.srcUrl})` + '\n')
   }
-})
+}
+
+// Desktop only: Firefox for Android does not expose context menus, and the API
+// object itself may be missing, so registering must stay optional.
+if (chrome.contextMenus && chrome.contextMenus.onClicked && typeof chrome.contextMenus.onClicked.addListener === 'function') {
+  chrome.contextMenus.onClicked.addListener(onContextMenuClicked)
+}

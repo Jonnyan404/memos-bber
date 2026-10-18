@@ -22,6 +22,10 @@ const EXT_DIR = path.join(ROOT, 'firefox')
 const PORT = Number(process.env.BIDI_PORT || 9447)
 const EXPECTED = fs.readFileSync(path.join(ROOT, 'VERSION'), 'utf8').trim()
 const MANIFEST = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'))
+const IS_MV3 = MANIFEST.manifest_version === 3
+const ANDROID_MIN =
+  (MANIFEST.browser_specific_settings && MANIFEST.browser_specific_settings.gecko_android &&
+    MANIFEST.browser_specific_settings.gecko_android.strict_min_version) || ''
 const EXPECTED_ID = (MANIFEST.browser_specific_settings && MANIFEST.browser_specific_settings.gecko && MANIFEST.browser_specific_settings.gecko.id) || ''
 
 const args = process.argv.slice(2)
@@ -126,8 +130,14 @@ async function main() {
     `installed id=${installed.extension} expected=${EXPECTED_ID} ` +
       `manifestVersion=${MANIFEST.version} expected=${EXPECTED} addonState=${addon ? 'present' : 'not-persisted'}`
   )
-  const ok = idOk && versionOk
-  console.log(ok ? 'PASS Firefox accepted the bundle (manifest, id and version)' : 'FAIL Firefox rejected or mismatched the bundle')
+  const ok = idOk && versionOk && IS_MV3 && Boolean(ANDROID_MIN)
+  console.log(
+    `manifestVersion=${MANIFEST.manifest_version} androidMin=${ANDROID_MIN || '-'} ` +
+      `eventPage=${Array.isArray(MANIFEST.background && MANIFEST.background.scripts)}`
+  )
+  if (!IS_MV3) console.log('FAIL bundle is not Manifest V3')
+  if (!ANDROID_MIN) console.log('FAIL no gecko_android.strict_min_version (mobile would be rejected)')
+  console.log(ok ? 'PASS Firefox accepted the MV3 bundle (manifest, id, version, android)' : 'FAIL Firefox rejected or mismatched the bundle')
   ws.close()
   child.kill('SIGKILL')
   process.exit(ok ? 0 : 1)

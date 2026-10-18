@@ -663,3 +663,50 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     --tw-text-opacity: 1;
     color: rgb(156 163 175 / var(--tw-text-opacity))
 }
+
+/* --------------------------------------------------------------- mobile
+   Firefox for Android renders the popup in a full-width panel (about
+   360-412dp) and has no hover. `pointer: coarse` keeps these rules off the
+   desktop popup, where the same 360px floor is what gives it its width. */
+@media (pointer: coarse) {
+    .body {
+        min-width: 0;
+        padding: 0 .5rem .5rem;
+    }
+    .selector-wrapper {
+        height: auto;
+    }
+    .selector-wrapper>.current-value-container {
+        min-height: 2.75rem;
+    }
+    /* The menu opens upwards on desktop, which lands on top of the editor on a
+       phone. Below the toolbar is empty space there, so open downwards. */
+    .selector-wrapper>.items-wrapper {
+        top: 100%;
+        bottom: auto;
+    }
+    .selector-wrapper>.items-wrapper>.item-lock {
+        line-height: 2.75rem;
+        font-size: .9375rem;
+    }
+    /* Keep the icon row at its desktop size: enlarging it pushes the
+       visibility selector under the send button on a 360px panel. */
+    .common-tools-container {
+        min-width: 0;
+    }
+    .common-tools-container .mr-5 {
+        margin-right: .25rem;
+    }
+    .selector-wrapper.visibility-selector {
+        flex-shrink: 0;
+    }
+    .random-image {
+        width: 100%;
+        height: auto;
+    }
+    #content_submit_text {
+        min-width: 3.5rem;
+        min-height: 2.75rem;
+        white-space: nowrap;
+    }
+}

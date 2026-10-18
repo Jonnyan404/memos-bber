@@ -76,5 +76,87 @@ eq(
   [5, 'resources/5']
 )
 
+// ------------------------------------------------------------- background.js
+// Firefox for Android has no context menus and no `browserAction`; load the
+// event page with both a desktop and an Android-shaped chrome object and make
+// sure top-level registration never throws.
+function mockChrome({ android = false } = {}) {
+  const menus = []
+  const listeners = { installed: [], clicked: [], storage: [] }
+  const chrome = {
+    runtime: {
+      id: 'memos-bber@test',
+      getURL: (p) => 'moz-extension://test/' + p,
+      lastError: undefined,
+      onInstalled: { addListener: (fn) => listeners.installed.push(fn) }
+    },
+    storage: {
+      sync: {
+        get: (defaults, cb) => cb(defaults),
+        set: (items, cb) => cb && cb()
+      },
+      onChanged: { addListener: (fn) => listeners.storage.push(fn) }
+    },
+    i18n: { getMessage: (k) => k },
+    action: { openPopup: () => {} },
+    tabs: { create: () => {} },
+    scripting: { executeScript: () => {} }
+  }
+  if (!android) {
+    chrome.contextMenus = {
+      create: (opts, cb) => {
+        menus.push(opts)
+        cb && cb()
+      },
+      update: (id, update, cb) => cb && cb(),
+      onClicked: { addListener: (fn) => listeners.clicked.push(fn) }
+    }
+  }
+  return { chrome, menus, listeners }
+}
+
+function loadBackground(opts) {
+  const mock = mockChrome(opts)
+  const sandbox = {
+    chrome: mock.chrome,
+    console,
+    Promise,
+    JSON,
+    Date,
+    setTimeout,
+    clearTimeout,
+    fetch: () => Promise.reject(new Error('no network in unit test'))
+  }
+  vm.createContext(sandbox)
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'firefox/js/background.js'), 'utf8'), sandbox)
+  return mock
+}
+
+function quiet(fn) {
+  try {
+    fn()
+    return null
+  } catch (err) {
+    return err
+  }
+}
+
+const desktop = loadBackground()
+eq('bg desktop registers onInstalled', desktop.listeners.installed.length, 1)
+eq('bg desktop registers context menu clicks', desktop.listeners.clicked.length, 1)
+eq('bg desktop registers storage listener', desktop.listeners.storage.length, 1)
+eq('bg desktop onInstalled throw', quiet(() => desktop.listeners.installed[0]()), null)
+eq(
+  'bg desktop creates three menus',
+  desktop.menus.map((m) => m.id),
+  ['Memos-send-selection', 'Memos-send-link', 'Memos-send-image']
+)
+eq('bg desktop selection menu contexts', desktop.menus[0].contexts, ['selection'])
+
+const android = loadBackground({ android: true })
+eq('bg android registers onInstalled', android.listeners.installed.length, 1)
+eq('bg android onInstalled throw', quiet(() => android.listeners.installed[0]()), null)
+eq('bg android creates no menus', android.menus.length, 0)
+
 console.log(`\n${failures === 0 ? 'all unit checks passed' : failures + ' unit checks failed'}`)
 process.exit(failures === 0 ? 0 : 1)

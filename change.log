@@ -1,4 +1,5 @@
 ## 更新日志
+- 20261018.4 Firefox 升至 Manifest V3（事件页，兼容 Firefox for Android 142+），权限拆分到 `host_permissions`，上下文菜单在 Android 上自动跳过；弹窗适配移动端窄屏与触控尺寸（`pointer: coarse`），新增 `web-ext lint`、真实 Firefox 安装、事件页双环境与 360px 布局四道验证
 - 20261018.3 服务端禁用公开备忘录时（0.15-0.26 的 `disallowPublicVisibility`），可见性选择器中的「公开」置灰并显示原因，点击只提示不改选择；适配层新增 `visibilityPolicy` 探测，矩阵与 CI 覆盖该场景
 - 20261018.2 标签/随机/搜索共享 30 秒列表缓存，写操作后立即失效；真实浏览器验证新增文件上传场景；CI 增加 Firefox 安装冒烟与上传场景
 - 20261018.1 搜索改为服务端优先（0.25+ `content.contains`、0.15-0.21 `content`），空结果回退本地扫描；补齐 de/es/fr/ja/ko 错误文案；新增适配层纯函数单测并纳入 CI

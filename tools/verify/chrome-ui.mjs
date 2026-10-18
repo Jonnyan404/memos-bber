@@ -44,6 +44,9 @@ const TOKEN = arg('token', process.env.MEMOS_TOKEN || '')
 const EXT_DIR = path.resolve(ROOT, arg('extension', 'chrome'))
 const SCENARIO = arg('scenario', 'success')
 const SCREENSHOT = arg('screenshot', '')
+// Emulate a phone-width popup (Firefox for Android renders it in a full-width
+// panel) and assert the shared layout still fits and stays tappable.
+const MOBILE = has('mobile')
 const HEADLESS = arg('headless', 'true') !== 'false'
 const KEEP = has('keep')
 const PORT = Number(arg('port', '9444'))
@@ -319,7 +322,22 @@ async function main() {
     const target = await openTarget(`chrome-extension://${id}/popup.html`)
     cdp = new Cdp(target.webSocketDebuggerUrl)
     await cdp.send('Runtime.enable')
-    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 420, height: 640, deviceScaleFactor: 1, mobile: false })
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: MOBILE ? 360 : 420,
+      height: MOBILE ? 640 : 640,
+      deviceScaleFactor: MOBILE ? 3 : 1,
+      mobile: MOBILE
+    })
+    if (MOBILE) {
+      // `pointer: coarse` is what the mobile CSS block keys off.
+      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+      await cdp.send('Emulation.setEmulatedMedia', {
+        features: [
+          { name: 'pointer', value: 'coarse' },
+          { name: 'any-pointer', value: 'coarse' }
+        ]
+      })
+    }
 
     const title = await evaluate(cdp, 'document.title')
     if (!title) throw new Error('popup did not load (extension id mismatch or extension disabled)')
@@ -375,6 +393,52 @@ async function main() {
     }
     const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, { awaitPromise: true })
     console.log(`saved: version=${stored.apiVersion || '-'} base=${stored.apiBase || '-'} era=${stored.apiFlavor || '-'}`)
+
+    if (MOBILE) {
+      const layout = await evaluate(
+        cdp,
+        `(() => {
+          const doc = document.documentElement
+          const body = getComputedStyle(document.querySelector('.body'))
+          const lock = document.querySelector('#lock')
+          const send = document.querySelector('#content_submit_text')
+          const box = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0)
+          return {
+            viewport: window.innerWidth,
+            scrollWidth: doc.scrollWidth,
+            bodyMinWidth: body.minWidth,
+            bodyPadding: body.paddingLeft,
+            lockHeight: box(lock),
+            sendHeight: box(send),
+            lockRight: lock ? Math.round(lock.getBoundingClientRect().right) : 0,
+            sendLeft: send ? Math.round(send.getBoundingClientRect().left) : 0,
+            toolsRight: (() => {
+              const tools = document.querySelector('.common-tools-container')
+              return tools ? Math.round(tools.getBoundingClientRect().right) : 0
+            })(),
+            coarse: window.matchMedia('(pointer: coarse)').matches
+          }
+        })()`
+      )
+      console.log('mobile layout:', JSON.stringify(layout))
+      const okMobile =
+        layout.coarse &&
+        layout.scrollWidth <= layout.viewport + 1 &&
+        layout.bodyMinWidth === '0px' &&
+        layout.lockHeight >= 40 &&
+        layout.sendHeight >= 40 &&
+        // Nothing may slide under the send button.
+        layout.lockRight <= layout.sendLeft
+      console.log(
+        okMobile
+          ? 'PASS mobile layout fits the viewport with touch-sized targets'
+          : 'FAIL mobile layout overflows or has mouse-sized targets'
+      )
+      if (!okMobile) {
+        process.exitCode = 1
+        return
+      }
+    }
 
     if (SCENARIO === 'upload') {
       const png = path.join(os.tmpdir(), `memos-upload-${Date.now()}.png`)
