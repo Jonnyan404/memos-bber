@@ -259,5 +259,11 @@
   },
   "githubTip": {
     "message": "在 GitHub 上查看源码"
+  },
+  "extensionVersionLabel": {
+    "message": "扩展版本"
+  },
+  "saveConnected": {
+    "message": "已连接 memos $1"
   }
 }

@@ -259,5 +259,11 @@
   },
   "githubTip": {
     "message": "GitHub でソースコードを見る"
+  },
+  "extensionVersionLabel": {
+    "message": "拡張機能バージョン"
+  },
+  "saveConnected": {
+    "message": "memos $1 に接続しました"
   }
 }

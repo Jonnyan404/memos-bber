@@ -225,6 +225,25 @@ for (const bundle of BUNDLES) {
       oper.includes('visibilityPolicy(')
   )
   check(bundle, 'blocked visibility is styled', css.includes('.item-lock.lock-blocked'))
+  check(
+    bundle,
+    'version readouts wired',
+    /id="extensionVersion"/.test(html) &&
+      /id="serverVersion"/.test(html) &&
+      oper.includes('chrome.runtime.getManifest()') &&
+      oper.includes("setVersionLine('extensionVersion'") &&
+      oper.includes("'serverVersion',") &&
+      oper.includes("window.addEventListener('i18n:changed', renderVersionLabels)")
+  )
+  check(
+    bundle,
+    'settings draft survives a closed popup',
+    oper.includes('SETTINGS_DRAFT_KEY') &&
+      oper.includes('chrome.storage.session') &&
+      oper.includes('restoreSettingsDraft()') &&
+      oper.includes('clearSettingsDraft()')
+  )
+  check(bundle, 'saved connection names the server version', oper.includes("msg('saveConnected', [result.version])"))
 
   // every locale must carry the new error strings (English fallback is fine,
   // but a missing key would silently show the raw key name)
@@ -242,7 +261,9 @@ for (const bundle of BUNDLES) {
         'sendPageTo',
         'kofiLabel',
         'kofiTip',
-        'githubTip'
+        'githubTip',
+        'extensionVersionLabel',
+        'saveConnected'
       ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))

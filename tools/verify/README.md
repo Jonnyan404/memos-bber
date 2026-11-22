@@ -8,6 +8,8 @@
 
 Chrome 137+ 的品牌版会忽略 `--load-extension`（页面会停在错误页，标题就是 URL）。
 实测：Google Chrome 155 加载失败，Chrome for Testing 156 正常。
+`CHROME_EXTRA_ARGS="--disable-features=DisableLoadExtensionCommandLineSwitch"` 这个开关在 157 上也
+救不回来（扩展页仍是 `chrome-error://`），只当排查线索用，别指望它。
 
 优先级（脚本自动按此顺序找）：
 
@@ -77,6 +79,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `fullscreen-panel` | 全屏页列宽可拖拽并单独记忆（`fullscreenEditorWidth`，双击复位）；结果列表在宽屏位于编辑器右侧、窄屏在下方且不会超出视口 |
 | `drop-text` | 拖入 `text/uri-list` / `text/plain` 会追加进草稿（URI 优先、去注释行、空行分隔），并同步写入 `open_content` |
 | `header-links` | 头部 Ko-fi 赞赏与 GitHub 两个图标入口可见、有可访问名称与悬停说明、不与标题和其他头部控件重叠，点击后各自在真实浏览器里打开配置的页面 |
+| `settings` | 设置面板同时显示扩展版本（与 manifest 一致）与服务端版本（与已存的 `apiVersion` 一致）；输入网址 + 令牌后不保存直接重载页面，两个输入框的内容仍在（`storage.session` 草稿） |
 
 ## 4. 它做了什么 / 坑
 
@@ -108,6 +111,8 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 - 头部外链（Ko-fi 赞赏 / GitHub）集中在三端共用的 `js/config.js`：`bundles.mjs` 校验该文件
   三端字节一致、URL 域名与格式正确、oper.js 按域名校验后才显示入口（配置坏了就隐藏而不是
   出现死按钮）；每个 UI 场景都会断言两个入口可见、有可访问名称、且不与标题/语言/设置控件重叠。
+- 设置面板的版本行同理：每个 UI 场景在保存后都断言 `#extensionVersion` 含 manifest 版本、
+  `#serverVersion` 含服务端返回的版本；`settings` 场景额外验证「输入未保存时重载页面草稿仍在」。
 - `.github/workflows/verify.yml`：
   - 每次 push / PR：bundle 静态检查 + 矩阵子集（0.15 / 0.23 / 0.26 / 0.31 / 26.10）
   - 每晚 18:00 UTC：完整 16 版本矩阵

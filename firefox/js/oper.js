@@ -468,9 +468,9 @@ function hideRandomList() {
   document.body.classList.remove('results-open')
 }
 
-function msg(key) {
-  if (typeof window.t === 'function') return window.t(key)
-  return chrome.i18n.getMessage(key) || ''
+function msg(key, substitutions) {
+  if (typeof window.t === 'function') return window.t(key, substitutions)
+  return chrome.i18n.getMessage(key, substitutions) || ''
 }
 
 // Turn an adapter error ({kind,status,code,message,hint}) into a message that
@@ -764,6 +764,10 @@ get_info(function (info) {
   refreshVisibilityPolicy(info)
   $('#apiUrl').val(info.apiUrl)
   $('#apiTokens').val(info.apiTokens)
+  // A draft typed before the popup closed wins over the stored value: it is
+  // newer by definition, and it is what the user was in the middle of doing.
+  restoreSettingsDraft()
+  initVersionLabels(info)
   $('#hideInput').val(info.hidetag)
   $('#showInput').val(info.showtag)
   $('#attachmentOnlyDefaultText').val(info.attachmentOnlyDefaultText)
@@ -1571,6 +1575,116 @@ function buildCustomSettingsPayload() {
   }
 }
 
+// Filling in a URL and an access token needs two clipboard trips, and the popup
+// closes the moment the user clicks outside it to copy the second value. The
+// pair is therefore staged in storage.session: memory only, dropped when the
+// browser exits, and cleared once "Save" has actually stored it (issue #9).
+const SETTINGS_DRAFT_KEY = 'settingsDraft'
+let settingsDraftTimer = 0
+
+function settingsDraftArea() {
+  return chrome.storage && chrome.storage.session ? chrome.storage.session : null
+}
+
+function stageSettingsDraft() {
+  const area = settingsDraftArea()
+  if (!area) return
+  clearTimeout(settingsDraftTimer)
+  settingsDraftTimer = setTimeout(function () {
+    area.set(
+      {
+        [SETTINGS_DRAFT_KEY]: {
+          apiUrl: $('#apiUrl').val() || '',
+          apiTokens: $('#apiTokens').val() || ''
+        }
+      },
+      function () {}
+    )
+  }, 250)
+}
+
+function restoreSettingsDraft() {
+  const area = settingsDraftArea()
+  if (!area) return
+  area.get({ [SETTINGS_DRAFT_KEY]: null }, function (items) {
+    const draft = items && items[SETTINGS_DRAFT_KEY]
+    if (!draft) return
+    // Only overwrite with something the user actually typed: a draft holding
+    // an empty field must not wipe a saved value.
+    if (draft.apiUrl) $('#apiUrl').val(draft.apiUrl)
+    if (draft.apiTokens) $('#apiTokens').val(draft.apiTokens)
+  })
+}
+
+function clearSettingsDraft() {
+  clearTimeout(settingsDraftTimer)
+  const area = settingsDraftArea()
+  if (!area) return
+  area.remove(SETTINGS_DRAFT_KEY, function () {})
+}
+
+$('#apiUrl, #apiTokens').on('input change', stageSettingsDraft)
+
+// Version readouts. The extension version answers "should I update?", the
+// server version answers "is my instance new enough?". Both are re-rendered on
+// language switch, so the labels follow the switcher instead of freezing in
+// whichever language the popup happened to boot in.
+let serverVersionInfo = { version: '', suffixKey: '' }
+
+function extensionVersion() {
+  try {
+    return chrome.runtime.getManifest().version || ''
+  } catch (_) {
+    return ''
+  }
+}
+
+function setVersionLine(id, text) {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.textContent = text || ''
+  el.hidden = !text
+}
+
+function versionLine(labelKey, version, suffixKey) {
+  if (!version) return ''
+  // The label keys still carry a trailing colon from their old inline use; a
+  // standalone readout reads better without it.
+  const label = msg(labelKey).replace(/[:：]\s*$/, '')
+  const head = label ? label + ' ' + version : version
+  return suffixKey ? head + ' · ' + msg(suffixKey) : head
+}
+
+function renderVersionLabels() {
+  setVersionLine('extensionVersion', versionLine('extensionVersionLabel', extensionVersion()))
+  setVersionLine(
+    'serverVersion',
+    versionLine('serverVersionLabel', serverVersionInfo.version, serverVersionInfo.suffixKey)
+  )
+}
+
+function updateServerVersionLabel(result) {
+  const era = result && result.era ? result.era : ''
+  serverVersionInfo = {
+    version: result && result.version ? result.version : '',
+    suffixKey: era === 'v2' ? 'serverVersionNew' : era === 'unknown' ? 'serverVersionUnknown' : ''
+  }
+  renderVersionLabels()
+}
+
+// Before any detection the stored value from the last successful save is the
+// best answer, so the panel is useful even offline.
+function initVersionLabels(info) {
+  const flavor = info && info.apiFlavor ? info.apiFlavor : ''
+  serverVersionInfo = {
+    version: info && info.apiVersion ? info.apiVersion : '',
+    suffixKey: flavor === 'v2' ? 'serverVersionNew' : ''
+  }
+  renderVersionLabels()
+}
+
+window.addEventListener('i18n:changed', renderVersionLabels)
+
 function saveSettingsPanel() {
   var apiUrl = $('#apiUrl').val()
   if (apiUrl.length > 0 && !apiUrl.endsWith('/')) {
@@ -1581,6 +1695,7 @@ function saveSettingsPanel() {
 
   if (!apiUrl && !apiTokens) {
     chrome.storage.sync.set(customSettings, function () {
+      clearSettingsDraft()
       $.message({ message: msg('saveSuccess') })
       $('#blog_info').slideUp(200)
     })
@@ -1597,7 +1712,11 @@ function saveSettingsPanel() {
   // (/api/v1 vs /api) and validates the token.
   adapter.detect(apiUrl, apiTokens, function (err, result) {
     if (err || !result) {
-      $.message({ message: memoErrorText(err) })
+      // A failed connection must not throw away the posting preferences the
+      // user just edited; they are independent of the server binding.
+      chrome.storage.sync.set(customSettings, function () {
+        $.message({ message: memoErrorText(err) })
+      })
       return
     }
 
@@ -1615,22 +1734,17 @@ function saveSettingsPanel() {
         disallowPublic: result.disallowPublic === true ? '1' : result.disallowPublic === false ? '0' : ''
       }),
       function () {
-        $.message({ message: msg('saveSuccess') })
+        clearSettingsDraft()
+        // Naming the version turns "saved" into "saved, and this is what it
+        // connected to" -- the confirmation the reporter of #9 was missing.
+        const connected = result.version ? msg('saveConnected', [result.version]) : ''
+        $.message({ message: connected || msg('saveSuccess') })
         $('#blog_info').hide()
         updateServerVersionLabel(result)
         applyVisibilityPolicy(result.disallowPublic)
       }
     )
   })
-}
-
-function updateServerVersionLabel(result) {
-  const el = document.getElementById('supportedMemosVersion')
-  if (!el || !result || !result.version) return
-  const era = result.era || ''
-  const label = msg('serverVersionLabel')
-  const suffix = era === 'v2' ? msg('serverVersionNew') : era === 'unknown' ? msg('serverVersionUnknown') : ''
-  el.textContent = label + ' ' + result.version + (suffix ? ' · ' + suffix : '')
 }
 
 $('#saveSettings').click(function () {

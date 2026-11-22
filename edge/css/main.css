@@ -304,6 +304,22 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     white-space: pre-wrap;
 }
 
+/* Version readouts under the connection fields. They answer "am I current?"
+   without opening a store page, so they stay muted and compact. */
+.settings-meta{
+    display: flex;
+    flex-wrap: wrap;
+    gap: .15rem .75rem;
+    font-size: .75rem;
+    line-height: 1.4;
+    color: #6b7280;
+}
+
+/* The spans start hidden and oper.js reveals them once it knows a value. */
+.settings-meta-item[hidden]{
+    display: none;
+}
+
 .settings-actions{
     display: flex;
     justify-content: flex-end;

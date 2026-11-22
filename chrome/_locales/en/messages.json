@@ -259,5 +259,11 @@
   },
   "githubTip": {
     "message": "View the source on GitHub"
+  },
+  "extensionVersionLabel": {
+    "message": "Extension version"
+  },
+  "saveConnected": {
+    "message": "Connected to memos $1"
   }
 }

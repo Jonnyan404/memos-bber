@@ -222,6 +222,38 @@ async function openTarget(url) {
   throw new Error('target did not expose a websocket url')
 }
 
+// The DevTools endpoint answers before the freshly started browser registers the
+// unpacked extension, so the first popup load can land on
+// chrome-error://chromewebdata. That shows up as one random matrix job failing
+// per night, so retry and require the real extension origin: an error page still
+// has a non-empty title (it is the requested URL), which is why a title check
+// alone proves nothing.
+async function openPopup(url, attempts = 15) {
+  let last = null
+  for (let i = 0; i < attempts; i++) {
+    const target = await openTarget(url)
+    const cdp = new Cdp(target.webSocketDebuggerUrl)
+    try {
+      await cdp.send('Runtime.enable')
+      const state = await cdp.send('Runtime.evaluate', {
+        expression: '({ origin: location.protocol, title: document.title, href: location.href })',
+        returnByValue: true
+      })
+      const value = state && state.result ? state.result.value : null
+      if (value && value.origin === 'chrome-extension:') return { cdp, title: value.title, href: value.href }
+      last = value
+    } catch (err) {
+      last = { error: err.message }
+    }
+    cdp.close()
+    await httpJson(`/json/close/${target.id}`).catch(() => {})
+    await sleep(500)
+  }
+  throw new Error(
+    'popup did not load (extension id mismatch or extension disabled); last=' + JSON.stringify(last)
+  )
+}
+
 async function evaluate(cdp, expression, { awaitPromise = false } = {}) {
   const result = await cdp.send('Runtime.evaluate', {
     expression,
@@ -385,6 +417,12 @@ async function main() {
     `--load-extension=${EXT_DIR}`
   ]
   if (HEADLESS) args.push('--headless=new')
+  // Escape hatch for branded Chrome 137+, which ignores --load-extension unless
+  // the switch is re-enabled through --disable-features. CI uses Chrome for
+  // Testing and does not need it.
+  if (process.env.CHROME_EXTRA_ARGS) {
+    args.push(...process.env.CHROME_EXTRA_ARGS.split(/\s+/).filter(Boolean))
+  }
   if (process.env.CI) args.push('--no-sandbox', '--disable-dev-shm-usage')
   args.push('about:blank')
 
@@ -424,9 +462,13 @@ async function main() {
   try {
     await waitForEndpoint()
     const id = extensionId(EXT_DIR)
-    const target = await openTarget(`chrome-extension://${id}/${PAGE}`)
-    cdp = new Cdp(target.webSocketDebuggerUrl)
-    await cdp.send('Runtime.enable')
+    // The DevTools endpoint answers before the freshly started browser has
+    // registered the unpacked extension. Opening the popup at that moment
+    // yields chrome-error://chromewebdata, which used to fail one random
+    // matrix job per night. Retry instead of trusting the first attempt.
+    const opened = await openPopup(`chrome-extension://${id}/${PAGE}`)
+    cdp = opened.cdp
+    const title = opened.title
     const metrics = VIEW || { width: MOBILE ? 360 : 420, height: MOBILE ? 640 : 640 }
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: metrics.width,
@@ -445,8 +487,6 @@ async function main() {
       })
     }
 
-    const title = await evaluate(cdp, 'document.title')
-    if (!title) throw new Error('popup did not load (extension id mismatch or extension disabled)')
     console.log(`extension ${id} loaded, popup title=${JSON.stringify(title)}`)
 
     // jQuery handlers are bound while the popup scripts execute; wait until the
@@ -582,6 +622,88 @@ async function main() {
     const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, { awaitPromise: true })
     console.log(`saved: version=${stored.apiVersion || '-'} base=${stored.apiBase || '-'} era=${stored.apiFlavor || '-'}`)
 
+    // Issue #9: the panel has to answer "which extension / which server am I
+    // talking to?" without opening a store page.
+    const versions = await evaluate(
+      cdp,
+      `(() => {
+        const text = (sel) => {
+          const el = document.querySelector(sel)
+          return { text: el ? (el.textContent || '').trim() : '', hidden: el ? el.hasAttribute('hidden') : true }
+        }
+        return {
+          ext: text('#extensionVersion'),
+          server: text('#serverVersion'),
+          manifest: chrome.runtime.getManifest().version
+        }
+      })()`
+    )
+    const versionsOk =
+      !versions.ext.hidden &&
+      versions.ext.text.includes(versions.manifest) &&
+      !versions.server.hidden &&
+      Boolean(stored.apiVersion) &&
+      versions.server.text.includes(stored.apiVersion)
+    console.log(
+      (versionsOk ? 'PASS' : 'FAIL') + ' settings panel names the extension and the server version',
+      JSON.stringify(versions)
+    )
+    if (!versionsOk) process.exitCode = 1
+
+    if (SCENARIO === 'settings') {
+      // Staging: typing a URL then leaving the popup to copy the token must not
+      // lose what was typed. Reloading the page is the same lifetime as
+      // reopening the popup (storage.session lives as long as the browser).
+      await evaluate(cdp, `(() => { document.querySelector('#blog_info_edit').click(); return true })()`)
+      await evaluate(
+        cdp,
+        `(() => {
+          const setValue = (el, value) => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+            setter.call(el, value)
+            el.dispatchEvent(new Event('input', { bubbles: true }))
+          }
+          setValue(document.querySelector('#apiUrl'), 'https://draft.example.com/memos/')
+          setValue(document.querySelector('#apiTokens'), 'draft-token-not-saved-yet')
+          return true
+        })()`
+      )
+      // The staging write is debounced, so give it a beat to land.
+      await sleep(600)
+      const staged = await evaluate(cdp, `new Promise((r) => chrome.storage.session.get('settingsDraft', r))`, {
+        awaitPromise: true
+      })
+      const draft = (staged && staged.settingsDraft) || {}
+      console.log('draft:', JSON.stringify(draft))
+      // Reloading may tear down the execution context mid-call; that is the
+      // point of the check, so the throw is expected and ignored.
+      await evaluate(cdp, `(() => { location.reload(); return true })()`).catch(() => {})
+      const restored = await waitFor(
+        cdp,
+        `(() => {
+          const url = document.querySelector('#apiUrl')
+          const token = document.querySelector('#apiTokens')
+          if (!url || !token) return false
+          return url.value === 'https://draft.example.com/memos/' && token.value === 'draft-token-not-saved-yet'
+        })()`,
+        15000
+      )
+      console.log(restored ? 'PASS unsaved URL and token survive a popup reopen' : 'FAIL draft was lost on reopen')
+      if (!restored) {
+        const now = await evaluate(
+          cdp,
+          `({ url: (document.querySelector('#apiUrl') || {}).value || '', token: ((document.querySelector('#apiTokens') || {}).value || '').length })`
+        )
+        console.log('after reload:', JSON.stringify(now))
+        process.exitCode = 1
+        return
+      }
+      // Leave no draft behind: the next run starts from the saved binding.
+      await evaluate(cdp, `new Promise((r) => chrome.storage.session.remove('settingsDraft', r))`, { awaitPromise: true })
+      if (SCREENSHOT) await capture(cdp, SCREENSHOT)
+      return
+    }
+
     if (SCENARIO === 'fullscreen-layout') {
       const layout = await evaluate(
         cdp,
@@ -641,6 +763,15 @@ async function main() {
     }
 
     if (MOBILE) {
+      // A toast is centred and can be wider than a 360px viewport while it is
+      // briefly on screen, which showed up once as a phantom 16px overflow.
+      await waitForToastToClear(cdp)
+      // Let the layout settle before measuring (animations, late fonts).
+      await evaluate(
+        cdp,
+        `new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`,
+        { awaitPromise: true }
+      ).catch(() => {})
       const layout = await evaluate(
         cdp,
         `(() => {
@@ -649,6 +780,15 @@ async function main() {
           const lock = document.querySelector('#lock')
           const send = document.querySelector('#content_submit_text')
           const box = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0)
+          // Name the culprits when it does overflow, so the next red build is
+          // diagnosable from the log alone.
+          const wide = []
+          document.querySelectorAll('body *').forEach((el) => {
+            const r = el.getBoundingClientRect()
+            if (r.width && r.right > window.innerWidth + 1) {
+              wide.push((el.id ? '#' + el.id : el.className || el.tagName) + ':' + Math.round(r.right))
+            }
+          })
           return {
             viewport: window.innerWidth,
             scrollWidth: doc.scrollWidth,
@@ -662,7 +802,8 @@ async function main() {
               const tools = document.querySelector('.common-tools-container')
               return tools ? Math.round(tools.getBoundingClientRect().right) : 0
             })(),
-            coarse: window.matchMedia('(pointer: coarse)').matches
+            coarse: window.matchMedia('(pointer: coarse)').matches,
+            wide: wide.slice(0, 6)
           }
         })()`
       )
@@ -1176,7 +1317,7 @@ async function main() {
 
     // The save toast says "Success" too, so it must not be mistaken for the
     // send result if it ever outlives the wait above.
-    const toast = await readToast(cdp, 12000, /保存信息|Save Info/i)
+    const toast = await readToast(cdp, 12000, /保存信息|Save Info|已连接|Connected to/i)
     console.log('toast:', JSON.stringify(toast))
 
     const memos = await serverMemos()

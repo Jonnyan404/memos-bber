@@ -259,5 +259,11 @@
   },
   "githubTip": {
     "message": "GitHub에서 소스 코드 보기"
+  },
+  "extensionVersionLabel": {
+    "message": "확장 프로그램 버전"
+  },
+  "saveConnected": {
+    "message": "memos $1 에 연결됨"
   }
 }
