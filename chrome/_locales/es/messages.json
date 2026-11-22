@@ -21,7 +21,7 @@
     "message": "Guardar"
   },
   "supportedMemosVersion": {
-    "message": "Compatible con Memos v0.15.0 - 26.10+"
+    "message": "Compatible con Memos v0.15.0 - 26.11+"
   },
   "settingsConnectionTitle": {
     "message": "Conexión"
@@ -222,7 +222,7 @@
     "message": "Este servidor no permite memos públicos; cambia a Privado o Protegido e inténtalo de nuevo"
   },
   "errApiRemoved": {
-    "message": "El servidor es 26.10+ (API antigua eliminada); actualiza la extensión"
+    "message": "El servidor es 26.11+ (API antigua eliminada); actualiza la extensión"
   },
   "errAuth": {
     "message": "Token inválido o caducado; genera uno nuevo"

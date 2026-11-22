@@ -4,7 +4,7 @@
 
 ## 更新日志
 
-- 当前支持memos `v0.15.0 - 26.10+` [点击查看详细更新日志](https://raw.githubusercontent.com/Jonnyan404/memos-bber/refs/heads/main/change.log)
+- 当前支持memos `v0.15.0 - 26.11+` [点击查看详细更新日志](https://raw.githubusercontent.com/Jonnyan404/memos-bber/refs/heads/main/change.log)
 
 ## 在线商店安装
 

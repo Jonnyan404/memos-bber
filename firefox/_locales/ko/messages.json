@@ -21,7 +21,7 @@
     "message": "저장"
   },
   "supportedMemosVersion": {
-    "message": "Memos v0.15.0 - 26.10+ 호환"
+    "message": "Memos v0.15.0 - 26.11+ 호환"
   },
   "settingsConnectionTitle": {
     "message": "연결 설정"
@@ -222,7 +222,7 @@
     "message": "이 서버는 공개 메모를 금지합니다. ‘비공개’ 또는 ‘보호’로 전환한 뒤 다시 시도하세요"
   },
   "errApiRemoved": {
-    "message": "서버가 26.10+ 입니다(구 API 제거됨). 확장을 업데이트하세요"
+    "message": "서버가 26.11+ 입니다(구 API 제거됨). 확장을 업데이트하세요"
   },
   "errAuth": {
     "message": "액세스 토큰이 유효하지 않거나 만료되었습니다. 새로 발급하세요"

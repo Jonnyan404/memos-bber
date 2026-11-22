@@ -1,7 +1,7 @@
 /**
  * Memos API adapter (v2)
  * ---------------------------------------------------------------------------
- * One adapter for Memos v0.15.0 -> 26.10+ (and newer).
+ * One adapter for Memos v0.15.0 -> 26.11+ (and newer).
  *
  * The upstream API changed shape four times. Instead of one branch per release
  * we model four "eras" and derive everything (routes, payloads, listing,
@@ -28,6 +28,8 @@
  *   - 0.31: `SPACE` visibility is added (visibility set is no longer closed).
  *   - 26.10: `/api/v1/*` returns 410 Gone; all paths lose the `/v1` marker,
  *     proto package becomes `memos.api`, `Memo.visibility` is required.
+ *   - 26.11: comments become memos carrying `parent`, and plain list results
+ *     include them; lists drop entries with a `parent`.
  *
  * Design rules:
  *   1. Detect the server version once (`instance/profile`), then cache it.
@@ -605,6 +607,20 @@
     }, fail)
   }
 
+  // 26.11 turns comments into memos that carry a `parent`, and the plain list
+  // returns them next to real memos. A comment has no draft of its own and
+  // cannot be edited from the popup, so every list consumer (search, random,
+  // tags, pagination counts) hides it. Older builds never set `parent`, so the
+  // same filter is a no-op there.
+  function isComment(memo) {
+    return Boolean(memo && typeof memo.parent === 'string' && memo.parent)
+  }
+
+  function withoutComments(list) {
+    if (!Array.isArray(list)) return []
+    return list.filter(function (memo) { return !isComment(memo) })
+  }
+
   function listLegacyPages(info, options, success, fail) {
     var opts = options || {}
     var limit = opts.pageSize && isFinite(opts.pageSize) ? Math.max(1, Math.floor(opts.pageSize)) : 1000
@@ -615,7 +631,7 @@
 
     function next() {
       if (pages >= maxPages) {
-        success(out)
+        success(withoutComments(out))
         return
       }
       pages++
@@ -626,7 +642,7 @@
         var list = extractList(data)
         out = out.concat(list)
         if (list.length < limit) {
-          success(out)
+          success(withoutComments(out))
           return
         }
         offset += list.length
@@ -666,14 +682,14 @@
 
     function next() {
       if (pages >= maxPages) {
-        callback(out)
+        callback(withoutComments(out))
         return
       }
       pages++
       fetchPage(info, path, token, function (list, nextToken) {
         out = out.concat(list)
         if (!nextToken || list.length === 0) {
-          callback(out)
+          callback(withoutComments(out))
           return
         }
         token = nextToken

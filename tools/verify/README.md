@@ -114,8 +114,8 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 - 设置面板的版本行同理：每个 UI 场景在保存后都断言 `#extensionVersion` 含 manifest 版本、
   `#serverVersion` 含服务端返回的版本；`settings` 场景额外验证「输入未保存时重载页面草稿仍在」。
 - `.github/workflows/verify.yml`：
-  - 每次 push / PR：bundle 静态检查 + 矩阵子集（0.15 / 0.23 / 0.26 / 0.31 / 26.10）
-  - 每晚 18:00 UTC：完整 16 版本矩阵
+  - 每次 push / PR：bundle 静态检查 + 矩阵子集（0.15 / 0.23 / 0.26 / 0.31 / 26.10 / 26.11）
+  - 每晚 18:00 UTC：完整 17 版本矩阵
   - Browser UI job：起 0.31 容器、装 Chrome for Testing，分别跑根路径与 `--subpath /memos` 两种部署
 
 ## 6. 子路径部署

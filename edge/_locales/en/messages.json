@@ -21,7 +21,7 @@
       "message": "Save"
    },
    "supportedMemosVersion": {
-      "message": "Compatible with Memos v0.15.0 - 26.10+"
+      "message": "Compatible with Memos v0.15.0 - 26.11+"
    },
    "settingsConnectionTitle": {
       "message": "Connection"
@@ -222,7 +222,7 @@
       "message": "This server disallows public memos; switch to Private or Protected and retry"
    },
    "errApiRemoved": {
-      "message": "Server is 26.10+ (legacy API removed); please update this extension"
+      "message": "Server is 26.11+ (legacy API removed); please update this extension"
    },
    "errAuth": {
       "message": "Invalid or expired access token; generate a new one"

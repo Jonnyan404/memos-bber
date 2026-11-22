@@ -21,7 +21,7 @@
     "message": "保存"
   },
   "supportedMemosVersion": {
-    "message": "Memos v0.15.0 - 26.10+ に対応"
+    "message": "Memos v0.15.0 - 26.11+ に対応"
   },
   "settingsConnectionTitle": {
     "message": "接続設定"
@@ -222,7 +222,7 @@
     "message": "このサーバーは公開メモを禁止しています。「非公開」または「保護」に切り替えて再試行してください"
   },
   "errApiRemoved": {
-    "message": "サーバーは 26.10+ です（旧 API は削除済み）。拡張を更新してください"
+    "message": "サーバーは 26.11+ です（旧 API は削除済み）。拡張を更新してください"
   },
   "errAuth": {
     "message": "アクセストークンが無効か期限切れです。再発行してください"

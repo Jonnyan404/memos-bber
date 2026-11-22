@@ -21,7 +21,7 @@
     "message": "Speichern"
   },
   "supportedMemosVersion": {
-    "message": "Kompatibel mit Memos v0.15.0 - 26.10+"
+    "message": "Kompatibel mit Memos v0.15.0 - 26.11+"
   },
   "settingsConnectionTitle": {
     "message": "Verbindung"
@@ -222,7 +222,7 @@
     "message": "Dieser Server verbietet öffentliche Memos; bitte auf Privat oder Geschützt wechseln"
   },
   "errApiRemoved": {
-    "message": "Server ist 26.10+ (alte API entfernt); bitte die Erweiterung aktualisieren"
+    "message": "Server ist 26.11+ (alte API entfernt); bitte die Erweiterung aktualisieren"
   },
   "errAuth": {
     "message": "Ungültiges oder abgelaufenes Token; bitte ein neues erzeugen"

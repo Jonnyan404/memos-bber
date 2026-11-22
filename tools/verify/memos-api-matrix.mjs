@@ -34,7 +34,7 @@ const VERSIONS = [
   '0.15.0', '0.16.1', '0.18.2', '0.20.1', '0.21.0',
   '0.22.3', '0.23.1', '0.24.0', '0.25.0', '0.26.1',
   '0.27.1', '0.28.0', '0.29.1', '0.30.0', '0.31.0',
-  '26.10-rc.1'
+  '26.10-rc.1', '26.11.2'
 ]
 
 const argv = process.argv.slice(2)
@@ -424,6 +424,28 @@ async function runVersion(version) {
       ok: marks.every((mark) => [...seen].some((content) => content.includes(mark))),
       detail: `${(allPages || []).length} memos over pageSize=2`
     })
+
+    // 26.11 returns comments (memos carrying a `parent`) in plain list results.
+    // The popup cannot edit a comment, so the adapter must keep them out of
+    // search, random and tag lists. Older builds ignore `parent`, and there the
+    // check is a no-op rather than a failure.
+    const parentRef = A.memoRef(created)
+    const comment = await http('POST', `/${detected.base}memos`, {
+      token: session.token,
+      body: { content: `${stamp}-comment`, visibility: 'PRIVATE', parent: parentRef }
+    }).catch(() => ({ json: null }))
+    const commentIsMemosComment = Boolean(comment.json && comment.json.parent)
+    if (commentIsMemosComment) {
+      const listedWithComment = await callWith((ok, bad) => api.listAllMemos({ pageSize: 100 }, ok, bad))
+      const leaked = (listedWithComment || []).some((m) => String(m.content || '').indexOf(`${stamp}-comment`) !== -1)
+      report.checks.push({
+        name: 'commentsExcluded',
+        ok: !leaked,
+        detail: `${(listedWithComment || []).length} memos listed, comment ${leaked ? 'leaked' : 'hidden'}`
+      })
+    } else {
+      report.checks.push({ name: 'commentsExcluded', ok: true, detail: 'comments are plain memos here' })
+    }
 
     const ref = A.memoRef(created)
     const fetched = await callWith((ok, bad) => api.getMemo(ref, ok, bad))

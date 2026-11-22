@@ -21,7 +21,7 @@
       "message": "保存"
    },
    "supportedMemosVersion": {
-      "message": "兼容 Memos v0.15.0 - 26.10+"
+      "message": "兼容 Memos v0.15.0 - 26.11+"
    },
    "settingsConnectionTitle": {
       "message": "连接设置"
@@ -222,7 +222,7 @@
       "message": "服务端禁止发布公开备忘录，请切换为“私有”或“受保护”后重试"
    },
    "errApiRemoved": {
-      "message": "服务端已升级到 26.10+（旧接口已移除），请更新插件"
+      "message": "服务端已升级到 26.11+（旧接口已移除），请更新插件"
    },
    "errAuth": {
       "message": "访问令牌无效或已过期，请重新生成并填写"
