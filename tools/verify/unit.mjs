@@ -438,6 +438,14 @@ eq('bg page and link are separate items', [desktop.state.menus[1].contexts, desk
     false
   )
 
+  await two.api.patch({ name: 'A renamed' })
+  eq('instances: renaming writes the connection object', two.store.memosInstances[0].name, 'A renamed')
+  eq(
+    'instances: renaming is not mistaken for runtime state',
+    'name' in (two.store.instanceRuntime_a1 || {}),
+    false
+  )
+
   await two.api.remove('b1')
   eq(
     'instances: delete removes the runtime keys',
@@ -452,6 +460,15 @@ eq('bg page and link are separate items', [desktop.state.menus[1].contexts, desk
     'instances: first save creates and activates',
     [fresh.store.memosInstances.length, fresh.store.activeInstanceId, fresh.store.memosInstances[0].name],
     [1, created.id, 'new']
+  )
+
+  const named = loadInstances({})
+  await named.api.upsert(null, { name: 'work', apiUrl: 'https://w.test/', apiTokens: 't' })
+  const namedRuntime = named.store['instanceRuntime_' + named.store.activeInstanceId] || {}
+  eq(
+    'instances: a new instance keeps the name it was given',
+    [named.store.memosInstances[0].name, 'name' in namedRuntime],
+    ['work', false]
   )
 }
 

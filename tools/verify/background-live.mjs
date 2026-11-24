@@ -232,26 +232,23 @@ async function main() {
     })`)
     check('keyboard command registered', JSON.parse(commands).includes('open-extension'), commands)
 
-    // The menu appends to the ACTIVE instance's draft now, so seed one and read
-    // it back from there. The previous state is restored afterwards: this runs
-    // against the same profile the popup scenarios share.
+    // The menu appends to the ACTIVE instance's draft, which now lives in its
+    // own per-instance runtime key. Seed an instance, read that key back, and
+    // restore the whole profile afterwards: the popup scenarios share it.
     const appended = await evaluate(`(async () => {
-      const before = await new Promise((r) => chrome.storage.sync.get(['memosInstances', 'activeInstanceId'], r))
+      const before = await new Promise((r) => chrome.storage.sync.get(null, r))
       const instance = {
         id: 'live-test',
         name: 'live',
         apiUrl: 'https://live.test/',
-        apiTokens: 'live-token',
-        open_action: 'save_text',
-        open_content: ''
+        apiTokens: 'live-token'
       }
       await new Promise((r) => chrome.storage.sync.set({ memosInstances: [instance], activeInstanceId: 'live-test' }, r))
       await handleMenuClick({ menuItemId: 'Memos-send-page', pageUrl: 'https://live.test/a?b=1' }, { id: 1, windowId: 1 })
-      const state = await new Promise((r) => chrome.storage.sync.get(['memosInstances'], r))
-      const active = (state.memosInstances || []).filter((x) => x.id === 'live-test')[0] || {}
-      const restore = JSON.parse(JSON.stringify(before))
-      await new Promise((r) => chrome.storage.sync.set(restore, r))
-      return JSON.stringify({ open_content: active.open_content })
+      const stored = await new Promise((r) => chrome.storage.sync.get(['instanceRuntime_live-test'], r))
+      const runtime = stored['instanceRuntime_live-test'] || {}
+      await new Promise((r) => chrome.storage.sync.clear(() => chrome.storage.sync.set(JSON.parse(JSON.stringify(before)), r)))
+      return JSON.stringify({ open_content: runtime.open_content })
     })()`)
     check(
       'menu click appends the page url',

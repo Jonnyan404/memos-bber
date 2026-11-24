@@ -302,7 +302,11 @@ async function readInstanceState(cdp) {
       const active = list.filter((x) => x.id === all.activeInstanceId)[0] || list[0] || {}
       const runtime = active.id ? all['instanceRuntime_' + active.id] || {} : {}
       const files = active.id ? all['instanceFiles_' + active.id] || {} : {}
-      r(Object.assign({}, all, active, runtime, files, { raw: all }))
+      r(Object.assign({}, all, active, runtime, files, {
+        instances: list,
+        activeId: all.activeInstanceId || '',
+        raw: all
+      }))
     }))`,
     { awaitPromise: true }
   )
@@ -810,7 +814,16 @@ async function main() {
       const waitReady = () =>
         waitFor(
           cdp,
-          `(() => Boolean(window.jQuery && document.getElementById('instanceToggle') && document.querySelector('textarea[name=text]')))()`,
+          `(() => {
+            const name = document.getElementById('instanceName')
+            return Boolean(
+              window.jQuery &&
+                document.getElementById('instanceToggle') &&
+                document.querySelector('textarea[name=text]') &&
+                name &&
+                name.textContent.trim()
+            )
+          })()`,
           15000
         )
       const switchTo = async (index) => {

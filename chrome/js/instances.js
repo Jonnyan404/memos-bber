@@ -134,7 +134,12 @@
     const runtime = {}
     const files = {}
     Object.keys(source || {}).forEach(function (key) {
-      if (CONNECTION_KEYS.indexOf(key) !== -1) connection[key] = source[key]
+      // `name` is not in CONNECTION_KEYS (the legacy migration must not read a
+      // name that never existed at the top level), but it does belong to the
+      // connection object: dropping it here silently renamed every new
+      // instance to its host name.
+      if (key === 'name') connection.name = source.name
+      else if (CONNECTION_KEYS.indexOf(key) !== -1) connection[key] = source[key]
       else if (FILES_KEYS.indexOf(key) !== -1) files[key] = source[key]
       else if (RUNTIME_KEYS.indexOf(key) !== -1) runtime[key] = source[key]
     })
