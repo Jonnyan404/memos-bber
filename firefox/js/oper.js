@@ -1018,15 +1018,21 @@ function newInstanceId() {
 }
 
 // "https://memos.example.com/" becomes "example": short enough for the 24px
-// chip, while the menu still shows the full host underneath.
+// chip, while the menu still shows the full host underneath. IP literals and
+// localhost keep their port, because "127" or "localhost" alone says nothing
+// about which test box it is.
 function defaultInstanceName(apiUrl) {
   const raw = String(apiUrl || '')
   try {
-    const host = new URL(raw).hostname
+    const url = new URL(raw)
+    const host = url.hostname
+    if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      return url.port ? host + ':' + url.port : host
+    }
     const bare = host.replace(/^(www|memos)\./, '')
     return bare.split('.')[0] || host || 'memos'
   } catch (_) {
-    const stripped = raw.replace(/^https?:\/\//, '').replace(/[/:?#].*$/, '')
+    const stripped = raw.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '')
     return stripped || 'memos'
   }
 }
