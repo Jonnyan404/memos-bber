@@ -912,7 +912,7 @@ async function main() {
       // Installs from before 2026.11 kept every key flat. Seed exactly that
       // shape, reload, and require the popup to adopt it: the token must still
       // connect, and the half-written draft must survive the move.
-      await evaluate(
+      const seeded = await evaluate(
         cdp,
         `new Promise((r) => chrome.storage.sync.clear(() => {
           chrome.storage.sync.set({
@@ -922,11 +922,24 @@ async function main() {
             open_content: 'legacy draft',
             hidetag: '#old',
             memo_lock: 'PRIVATE'
-          }, r)
+          }, () => r(true))
         }))`,
         { awaitPromise: true }
       )
+      const beforeReload = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, {
+        awaitPromise: true
+      })
+      console.log(
+        'migrate seed:',
+        JSON.stringify({
+          seeded,
+          apiUrl: beforeReload.apiUrl || '',
+          tokenLength: (beforeReload.apiTokens || '').length,
+          draft: beforeReload.open_content || ''
+        })
+      )
       await evaluate(cdp, `(() => { location.reload(); return true })()`).catch(() => {})
+      await sleep(600)
       const chipReady = await waitFor(
         cdp,
         `(() => {
