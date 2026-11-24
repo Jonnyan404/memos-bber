@@ -996,7 +996,9 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 @media (pointer: coarse){
     .instance-toggle{
         height: 28px;
-        max-width: 7rem;
+        /* Five 28px header buttons take 156px of a 360px popup, so the chip
+           has to give way here; at 7rem it overlapped them. */
+        max-width: 4.6rem;
     }
     .instance-item{padding: .55rem .5rem;}
     .instance-admin-btn{padding: .3rem .55rem;}
