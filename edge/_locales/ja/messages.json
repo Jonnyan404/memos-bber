@@ -319,5 +319,11 @@
   },
   "themeDark": {
     "message": "テーマ：ダーク"
+  },
+  "moreMenuTitle": {
+    "message": "その他"
+  },
+  "moreLanguage": {
+    "message": "言語"
   }
 }

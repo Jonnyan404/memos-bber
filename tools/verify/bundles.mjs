@@ -308,12 +308,24 @@ for (const bundle of BUNDLES) {
     'header controls share one row and one shape',
     html.includes('class="header-actions"') &&
       html.includes('id="themeToggle"') &&
+      html.includes('id="moreToggle"') &&
+      // Exactly three targets: settings, theme and "more". The language, the
+      // support link and the repository moved into that menu.
+      (html.match(/class="header-btn"/g) || []).length === 3 &&
       css.includes('.header-actions .header-btn') &&
-      // The gear, the language toggle, the theme toggle and both links must all
-      // be covered by the same rule, or the row drifts apart again.
-      css.includes('.header-actions .lang-toggle') &&
-      css.includes('.header-actions .header-links a') &&
       /#blog_info_edit,?\s*\{/.test(css)
+  )
+  check(
+    bundle,
+    'language, support and repository live in one menu',
+    html.includes('id="langMenu"') &&
+      html.indexOf('id="langMenu"') > html.indexOf('id="moreMenu"') &&
+      html.includes('id="kofi"') &&
+      html.indexOf('id="kofi"') > html.indexOf('id="moreMenu"') &&
+      html.includes('id="github"') &&
+      html.indexOf('id="github"') > html.indexOf('id="moreMenu"') &&
+      css.includes('#moreMenu .lang-menu') &&
+      css.includes('.more-item')
   )
   check(
     bundle,
@@ -370,7 +382,9 @@ for (const bundle of BUNDLES) {
         'instanceFormEdit',
         'themeAuto',
         'themeLight',
-        'themeDark'
+        'themeDark',
+        'moreMenuTitle',
+        'moreLanguage'
       ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))

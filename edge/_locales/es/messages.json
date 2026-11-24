@@ -319,5 +319,11 @@
   },
   "themeDark": {
     "message": "Tema: oscuro"
+  },
+  "moreMenuTitle": {
+    "message": "Más"
+  },
+  "moreLanguage": {
+    "message": "Idioma"
   }
 }

@@ -746,7 +746,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     align-items: center;
     gap: .28rem;
     height: 24px;
-    max-width: 5rem;
+    max-width: 6.2rem;
     box-sizing: border-box;
     padding: 0 .45rem;
     border: 1px solid var(--border-strong);
@@ -996,9 +996,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 @media (pointer: coarse){
     .instance-toggle{
         height: 28px;
-        /* Five 28px header buttons take 156px of a 360px popup, so the chip
-           has to give way here; at 7rem it overlapped them. */
-        max-width: 4.6rem;
+        max-width: 6rem;
     }
     .instance-item{padding: .55rem .5rem;}
     .instance-admin-btn{padding: .3rem .55rem;}
@@ -1423,4 +1421,106 @@ html[data-theme='dark'] ::placeholder{
    the plain text inside .body inherited the UA default (black). */
 html[data-theme='dark'] .body{
     color: var(--text);
+}
+
+/* ------------------------------------------------------------ more menu */
+/* Language, support and the repository sit behind one button: they were three
+   of the five targets that made the header fight the instance chip. */
+.more-switcher{
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.more-menu{
+    position: absolute;
+    top: calc(100% + .35rem);
+    right: 0;
+    width: 17rem;
+    box-sizing: border-box;
+    padding: .3rem;
+    border: 1px solid var(--border);
+    border-radius: .5rem;
+    background-color: var(--surface);
+    box-shadow: 0 8px 24px rgba(15,23,42,.12);
+    z-index: 30;
+}
+
+.more-menu.hidden{
+    display: none;
+}
+
+.more-menu-title{
+    padding: .25rem .5rem .3rem;
+    font-size: .7rem;
+    color: var(--muted-2);
+}
+
+/* The language menu used to be a floating panel of its own; inside this menu it
+   is a two-column grid, which keeps eight languages at four rows. */
+#moreMenu .lang-switcher{
+    position: static;
+    display: block;
+}
+
+#moreMenu .lang-menu{
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .15rem;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+}
+
+#moreMenu .lang-menu-item{
+    padding: .35rem .35rem;
+    font-size: .72rem;
+    text-align: center;
+}
+
+.more-sep{
+    height: 1px;
+    margin: .3rem .2rem;
+    background-color: var(--border);
+}
+
+.more-item{
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem .5rem;
+    border-radius: .35rem;
+    color: var(--text-2);
+    font-size: .75rem;
+    text-decoration: none;
+}
+
+.more-item:hover{
+    background-color: var(--surface-muted);
+    color: var(--text);
+}
+
+.more-item svg{
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+.more-item[hidden]{
+    display: none;
+}
+
+html[data-theme='dark'] .more-menu{
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+
+@media (pointer: coarse){
+    .more-item{
+        padding: .55rem .5rem;
+    }
 }

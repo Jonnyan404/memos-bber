@@ -65,56 +65,45 @@
           <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>
         </svg>
       </button>
-      <div id="lang_switcher" class="lang-switcher">
-      <button
-        id="langToggle"
-        class="lang-toggle"
-        type="button"
-        aria-haspopup="true"
-        aria-expanded="false"
-      >
-        <span id="langToggleText" class="lang-toggle-text" aria-hidden="true">A</span>
-      </button>
-      <div id="langMenu" class="lang-menu hidden" role="menu" aria-labelledby="langToggle">
-        <button id="langOptionAuto" class="lang-menu-item" type="button" data-lang="auto" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionEn" class="lang-menu-item" type="button" data-lang="en" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionDe" class="lang-menu-item" type="button" data-lang="de" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionFr" class="lang-menu-item" type="button" data-lang="fr" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionEs" class="lang-menu-item" type="button" data-lang="es" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionZhCN" class="lang-menu-item" type="button" data-lang="zh_CN" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionJa" class="lang-menu-item" type="button" data-lang="ja" role="menuitemradio" aria-checked="false"></button>
-        <button id="langOptionKo" class="lang-menu-item" type="button" data-lang="ko" role="menuitemradio" aria-checked="false"></button>
+      <div id="more_switcher" class="more-switcher">
+        <button id="moreToggle" class="header-btn" type="button" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false">
+            <circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/>
+          </svg>
+        </button>
+        <!-- Language, support and the repository live behind this one button.
+             Five separate 24px targets left no room for the instance chip on a
+             360px popup, and none of these three is a daily action. -->
+        <div id="moreMenu" class="more-menu hidden" role="menu" aria-labelledby="moreToggle">
+          <div class="more-menu-title" id="moreLanguageTitle"></div>
+          <div id="lang_switcher" class="lang-switcher">
+            <div id="langMenu" class="lang-menu">
+              <button id="langOptionAuto" class="lang-menu-item" type="button" data-lang="auto" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionEn" class="lang-menu-item" type="button" data-lang="en" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionDe" class="lang-menu-item" type="button" data-lang="de" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionFr" class="lang-menu-item" type="button" data-lang="fr" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionEs" class="lang-menu-item" type="button" data-lang="es" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionZhCN" class="lang-menu-item" type="button" data-lang="zh_CN" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionJa" class="lang-menu-item" type="button" data-lang="ja" role="menuitemradio" aria-checked="false"></button>
+              <button id="langOptionKo" class="lang-menu-item" type="button" data-lang="ko" role="menuitemradio" aria-checked="false"></button>
+            </div>
+          </div>
+          <div class="more-sep"></div>
+          <a id="kofi" class="more-item" href="" target="_blank" rel="noopener noreferrer" hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M4 8h12v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" />
+              <path d="M16 9.5h1.5a2.75 2.75 0 0 1 0 5.5H16" />
+            </svg>
+            <span id="kofiLabel"></span>
+          </a>
+          <a id="github" class="more-item" href="" target="_blank" rel="noopener noreferrer" hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
       </div>
-    </div>
-    <!-- External entries. The URLs live in js/config.js (single source for all
-         three bundles); oper.js reveals each one only once its link validates. -->
-    <div id="header_links" class="header-links">
-      <a
-        id="kofi"
-        class="kofi-link"
-        href=""
-        target="_blank"
-        rel="noopener noreferrer"
-        hidden
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-          <path d="M4 8h12v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z" />
-          <path d="M16 9.5h1.5a2.75 2.75 0 0 1 0 5.5H16" />
-        </svg>
-      </a>
-      <a
-        id="github"
-        class="header-icon-link"
-        href=""
-        target="_blank"
-        rel="noopener noreferrer"
-        hidden
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true" focusable="false">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
-        </svg>
-      </a>
-    </div>
     </div>
     <div id="blog_info" class="settings-panel">
       <div class="settings-section" id="instanceSection">

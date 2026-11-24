@@ -160,14 +160,15 @@ function applyStaticI18n() {
 	setText('langOptionZhCN', 'langChineseSimplified')
 	setText('langOptionJa', 'langJapanese')
 	setText('langOptionKo', 'langKorean')
-	setTitle('langToggle', 'tipLanguage')
-	const langToggle = document.getElementById('langToggle')
-	if (langToggle) langToggle.setAttribute('aria-label', t('tipLanguage'))
 
-	// Header links: the labels are localised, the URLs come from config.js
-	// (oper.js wires them and decides whether each entry is safe to show).
-	setLabelledLinkTitle('kofi', 'kofiTip', 'kofiLabel')
-	setLabelledLinkTitle('github', 'githubTip')
+	// Support and repository entries live in the "more" menu now. They carry
+	// visible text, so a tooltip is enough and the accessible name comes from
+	// the text itself.
+	setText('kofiLabel', 'kofiLabel')
+	setTitle('kofi', 'kofiTip')
+	setTitle('github', 'githubTip')
+	setText('moreLanguageTitle', 'moreLanguage')
+	setLabelledLinkTitle('moreToggle', 'moreMenuTitle')
 
 	// Native hover tooltips (title)
 	setTitle('opensite', 'tipOpenSite')

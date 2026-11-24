@@ -319,5 +319,11 @@
   },
   "themeDark": {
     "message": "테마: 다크"
+  },
+  "moreMenuTitle": {
+    "message": "더보기"
+  },
+  "moreLanguage": {
+    "message": "언어"
   }
 }

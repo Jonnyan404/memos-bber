@@ -319,5 +319,11 @@
   },
   "themeDark": {
     "message": "主题：暗色"
+  },
+  "moreMenuTitle": {
+    "message": "更多"
+  },
+  "moreLanguage": {
+    "message": "语言"
   }
 }

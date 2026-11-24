@@ -967,6 +967,41 @@ function initInstanceSwitcher() {
 
 initInstanceSwitcher()
 
+// The "more" button owns language, support and the repository. It closes the
+// same three ways the instance menu does: outside click, Escape, or picking a
+// language (the links navigate away on their own).
+function initMoreMenu() {
+  const toggle = document.getElementById('moreToggle')
+  const menu = document.getElementById('moreMenu')
+  const switcher = document.getElementById('more_switcher')
+  if (!toggle || !menu) return
+
+  const setOpen = function (open) {
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false')
+    menu.classList.toggle('hidden', !open)
+  }
+
+  toggle.addEventListener('click', function (event) {
+    event.stopPropagation()
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true')
+  })
+
+  menu.addEventListener('click', function (event) {
+    if (event.target.closest && event.target.closest('.lang-menu-item')) setOpen(false)
+  })
+
+  document.addEventListener('click', function (event) {
+    if (!switcher || switcher.contains(event.target)) return
+    setOpen(false)
+  })
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') setOpen(false)
+  })
+}
+
+initMoreMenu()
+
 function updateLockNowText(lockType) {
   if (lockType === 'PUBLIC') {
     $('#lock-now').text(msg('lockPublic'))

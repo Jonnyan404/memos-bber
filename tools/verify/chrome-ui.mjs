@@ -575,9 +575,7 @@ async function main() {
         return {
           gear: read('blog_info_edit'),
           theme: read('themeToggle'),
-          lang: read('langToggle'),
-          kofi: read('kofi'),
-          github: read('github'),
+          more: read('moreToggle'),
           titleRight: Math.round(rect('.title').right),
           chipRight: Math.round(rect('#instance_switcher').right),
           actionsLeft: Math.round(rect('.header-actions').left),
@@ -585,23 +583,10 @@ async function main() {
         }
       })()`
     )
-    const linkOk = (entry, host) =>
-      !entry.missing &&
-      entry.hidden === false &&
-      entry.display !== 'none' &&
-      host.test(entry.href) &&
-      entry.target === '_blank' &&
-      /noopener/.test(entry.rel) &&
-      entry.aria.length > 0 &&
-      entry.title.length > 0 &&
-      entry.width >= 24 &&
-      entry.height >= 24 &&
-      entry.left >= header.chipRight &&
-      entry.right <= header.viewport
-    // Every control in the row is the same button: same box, same text colour,
-    // same border. That is what "one look" means here, and it is checked rather
-    // than described.
-    const buttons = [header.gear, header.theme, header.lang, header.kofi, header.github]
+    // Exactly three controls share the row now; language, support and the
+    // repository sit behind the "more" button and are checked by the
+    // header-links scenario, which opens that menu.
+    const buttons = [header.gear, header.theme, header.more]
     const sameBox = buttons.every(
       (entry) =>
         !entry.missing && entry.display !== 'none' && entry.width === buttons[0].width && entry.height === buttons[0].height
@@ -610,10 +595,10 @@ async function main() {
       (entry) => entry.color === buttons[0].color && entry.borderColor === buttons[0].borderColor
     )
     const headerOk =
-      linkOk(header.kofi, /^https:\/\/ko-fi\.com\//) &&
-      linkOk(header.github, /^https:\/\/github\.com\//) &&
-      !header.theme.missing &&
-      header.theme.aria.length > 0 &&
+      buttons.every((entry) => !entry.missing && entry.display !== 'none') &&
+      header.more.aria.length > 0 &&
+      header.gear.left >= header.chipRight &&
+      header.more.right <= header.viewport &&
       header.chipRight <= header.actionsLeft &&
       sameBox &&
       sameColour
@@ -626,6 +611,60 @@ async function main() {
 
     if (SCENARIO === 'header-links') {
       if (!headerOk) return
+      // Everything that used to sit in the header now lives in this menu, so
+      // the scenario opens it and checks the contents before clicking.
+      await evaluate(cdp, `(() => { document.getElementById('moreToggle').click(); return true })()`)
+      await sleep(150)
+      const more = await evaluate(
+        cdp,
+        `(() => {
+          const menu = document.getElementById('moreMenu')
+          const read = (id) => {
+            const el = document.getElementById(id)
+            const box = el.getBoundingClientRect()
+            return {
+              hidden: el.hasAttribute('hidden'),
+              display: getComputedStyle(el).display,
+              href: el.href || '',
+              target: el.target || '',
+              rel: el.rel || '',
+              text: (el.textContent || '').trim(),
+              title: el.getAttribute('title') || '',
+              width: Math.round(box.width),
+              height: Math.round(box.height)
+            }
+          }
+          return {
+            open: Boolean(menu) && !menu.classList.contains('hidden'),
+            langs: document.querySelectorAll('#langMenu .lang-menu-item').length,
+            kofi: read('kofi'),
+            github: read('github')
+          }
+        })()`
+      )
+      const linkInMenu = (entry, host) =>
+        !entry.hidden &&
+        entry.display !== 'none' &&
+        host.test(entry.href) &&
+        entry.target === '_blank' &&
+        /noopener/.test(entry.rel) &&
+        entry.text.length > 0 &&
+        entry.title.length > 0 &&
+        entry.width >= 24 &&
+        entry.height >= 24
+      const okMore =
+        more.open &&
+        more.langs === 8 &&
+        linkInMenu(more.kofi, /^https:\/\/ko-fi\.com\//) &&
+        linkInMenu(more.github, /^https:\/\/github\.com\//)
+      console.log(
+        (okMore ? 'PASS' : 'FAIL') + ' more menu lists eight languages, support and the repository',
+        JSON.stringify(more)
+      )
+      if (!okMore) {
+        process.exitCode = 1
+        return
+      }
       // Plain links open the tab on their own, so keyboard and middle-click
       // work without extra code. Verify each tab actually appears.
       for (const [id, host] of [

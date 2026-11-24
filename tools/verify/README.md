@@ -78,7 +78,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `fullscreen-layout` | 全屏页（`--page=popup.html?mode=full`）无整页滚动、编辑区 880 上限且占满剩余高度、发送按钮在视口内、语言/设置按钮仍在视口内 |
 | `fullscreen-panel` | 全屏页列宽可拖拽并单独记忆（`fullscreenEditorWidth`，双击复位）；结果列表在宽屏位于编辑器右侧、窄屏在下方且不会超出视口 |
 | `drop-text` | 拖入 `text/uri-list` / `text/plain` 会追加进草稿（URI 优先、去注释行、空行分隔），并同步写入 `open_content` |
-| `header-links` | 头部 Ko-fi 赞赏与 GitHub 两个图标入口可见、有可访问名称与悬停说明、不与标题和其他头部控件重叠，点击后各自在真实浏览器里打开配置的页面 |
+| `header-links` | 打开「更多」菜单后：语言区有 8 个选项（两列网格），Ko-fi 赞赏与 GitHub 两个入口可见、有文字与悬停说明、带 `target`/`rel`，点击后各自在真实浏览器里打开配置的页面；菜单自身要有 `aria-expanded` 状态且在头部按钮下方不越界 |
 | `settings` | 设置面板同时显示扩展版本（与 manifest 一致）与服务端版本（与已存的 `apiVersion` 一致）；输入网址 + 令牌后不保存直接重载页面，两个输入框的内容仍在（`storage.session` 草稿） |
 | `instances` | 头部实例 chip 显示当前实例名、有可访问名称、状态点为「已连接」；点开菜单列出全部实例且恰好一个标记为当前，并显示主机与服务端版本；点「+ 添加实例」后设置面板展开且名称/网址/令牌三个输入框为空（否则下一次保存会覆盖当前服务器）；填入第二个实例保存后 `memosInstances` 有两条、名称按填写值保存、`activeInstanceId` 指向新实例；接着做 B→A→B 的往返，断言两个实例的草稿各自留在 `instanceRuntime_<id>` 里（切回 A 时编辑器为空、切回 B 时是 B 的文本）；结束时把存储恢复原样 |
 | `migrate` | 把存储清空后只写入 2026.11 之前的平铺键（`apiUrl`/`apiTokens`/`apiVersion`/`open_content`/`hidetag`），重载页面，断言旧的单实例配置被采纳成一个实例：chip 有名字、`memosInstances` 一条、`instanceRuntime_<id>` 里有原来的草稿与标签过滤、编辑器显示旧草稿、设置里的网址仍是原值，并且旧顶层键保留（回退旧版仍可用）。这条覆盖升级路径，UI 场景默认的空 profile 永远碰不到 |

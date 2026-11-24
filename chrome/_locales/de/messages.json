@@ -319,5 +319,11 @@
   },
   "themeDark": {
     "message": "Design: dunkel"
+  },
+  "moreMenuTitle": {
+    "message": "Mehr"
+  },
+  "moreLanguage": {
+    "message": "Sprache"
   }
 }
