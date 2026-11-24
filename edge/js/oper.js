@@ -787,7 +787,7 @@ function switchInstance(id) {
   // Park what is in the editor on the instance being left first, so
   // "write, switch, switch back" keeps the text on the right server.
   patchActiveInstance({ open_action: 'save_text', open_content: $("textarea[name=text]").val() || '' }, function () {
-    chrome.storage.sync.set({ [ACTIVE_INSTANCE_KEY]: id }, function () {
+    window.MemosInstances.setActive(id).then(function () {
       setInstanceMenuOpen(false)
       location.reload()
     })
@@ -967,41 +967,15 @@ function resolveSendContent(rawContent, resources, customText) {
 }
 
 // ---- Multiple Memos instances -------------------------------------------
-// One flat apiUrl/apiTokens pair cannot describe "home + work + a test box".
-// Instances live in a list, and every per-instance key keeps the name it had
-// as a top-level setting (open_content, resourceIdList, hidetag ...), so
-// get_info() can flatten the active one into the object the rest of this file
-// already expects. That is what leaves js/compat/memosApi.js untouched.
-const INSTANCES_KEY = 'memosInstances'
-const ACTIVE_INSTANCE_KEY = 'activeInstanceId'
-const INSTANCE_KEYS = [
-  'apiUrl', 'apiTokens', 'apiFlavor', 'apiVersion', 'apiBase', 'userRef',
-  'memoUiPath', 'disallowPublic', 'userid',
-  'open_action', 'open_content', 'resourceIdList', 'hidetag', 'showtag'
-]
-// Read on every get_info(): global preferences, plus the legacy top-level
-// per-instance keys, which are only consumed by the one-time migration.
-const INFO_DEFAULTS = {
-  memo_lock: '',
-  memoUiPath: 'memos',
-  attachmentOnlyDefaultText: '',
-  apiUrl: '',
-  apiTokens: '',
-  apiFlavor: '',
-  apiVersion: '',
-  apiBase: '',
-  userRef: '',
-  disallowPublic: '',
-  userid: '',
-  open_action: '',
-  open_content: '',
-  resourceIdList: [],
-  hidetag: '',
-  showtag: ''
-}
-// get_info() reads only these: the legacy keys above must NOT leak back into
-// the form once the list exists, or deleting the last instance would leave the
-// old server sitting in the connection fields.
+// The storage itself lives in js/instances.js (loaded before this file and
+// shared by all three bundles): connections in memosInstances, draft and tag
+// filter in instanceRuntime_<id>, attachments in instanceFiles_<id>. What is
+// left here is the popup side: get_info() flattens the active instance so the
+// rest of this file keeps reading info.apiUrl / info.open_content exactly as
+// before, which is why js/compat/memosApi.js needs no change at all.
+// get_info() reads only the global preferences: the legacy top-level
+// per-instance keys must NOT leak back into the form once the list exists, or
+// deleting the last instance would leave the old server in the fields.
 const GLOBAL_DEFAULTS = {
   memo_lock: '',
   memoUiPath: 'memos',
@@ -1013,167 +987,55 @@ let instanceState = { instances: [], activeId: '' }
 // instead of overwriting the active one.
 let pendingNewInstance = false
 
-function newInstanceId() {
-  return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
-}
-
-// "https://memos.example.com/" becomes "example": short enough for the 24px
-// chip, while the menu still shows the full host underneath. IP literals and
-// localhost keep their port, because "127" or "localhost" alone says nothing
-// about which test box it is.
 function defaultInstanceName(apiUrl) {
-  const raw = String(apiUrl || '')
-  try {
-    const url = new URL(raw)
-    const host = url.hostname
-    if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-      return url.port ? host + ':' + url.port : host
-    }
-    const bare = host.replace(/^(www|memos)\./, '')
-    return bare.split('.')[0] || host || 'memos'
-  } catch (_) {
-    const stripped = raw.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '')
-    return stripped || 'memos'
-  }
+  return window.MemosInstances.defaultName(apiUrl)
 }
 
 function instanceHost(apiUrl) {
-  try {
-    return new URL(String(apiUrl)).host
-  } catch (_) {
-    return String(apiUrl || '')
-  }
+  return window.MemosInstances.hostOf(apiUrl)
 }
 
-function pickInstanceKeys(source) {
-  const out = {}
-  INSTANCE_KEYS.forEach(function (key) {
-    if (source && source[key] !== undefined) out[key] = source[key]
-  })
-  return out
-}
-
-function writeInstances(instances, activeId, callback) {
-  chrome.storage.sync.set(
-    { [INSTANCES_KEY]: instances, [ACTIVE_INSTANCE_KEY]: activeId || '' },
-    function () {
-      if (callback) callback()
-    }
-  )
-}
-
-// Reads the list, building it from the old flat keys the first time an
-// upgraded install opens the popup. The legacy keys stay in place so that a
-// downgrade to an older build still finds its connection.
-function loadInstanceState(callback) {
-  chrome.storage.sync.get(
-    Object.assign({ [INSTANCES_KEY]: null, [ACTIVE_INSTANCE_KEY]: '' }, INFO_DEFAULTS),
-    function (items) {
-      const list = Array.isArray(items[INSTANCES_KEY])
-        ? items[INSTANCES_KEY].filter(function (inst) {
-            return inst && inst.id
-          })
-        : []
-      if (list.length) {
-        const known = list.some(function (inst) {
-          return inst.id === items[ACTIVE_INSTANCE_KEY]
-        })
-        const activeId = known ? items[ACTIVE_INSTANCE_KEY] : list[0].id
-        if (activeId !== items[ACTIVE_INSTANCE_KEY]) {
-          chrome.storage.sync.set({ [ACTIVE_INSTANCE_KEY]: activeId })
-        }
-        callback({ instances: list, activeId: activeId })
-        return
-      }
-      if (!items.apiUrl && !items.apiTokens) {
-        callback({ instances: [], activeId: '' })
-        return
-      }
-      const migrated = Object.assign(
-        { id: newInstanceId(), name: defaultInstanceName(items.apiUrl) },
-        pickInstanceKeys(items)
-      )
-      writeInstances([migrated], migrated.id, function () {
-        callback({ instances: [migrated], activeId: migrated.id })
-      })
-    }
-  )
-}
-
-function findActiveInstance(state) {
-  if (!state || !Array.isArray(state.instances)) return null
-  return (
-    state.instances.filter(function (inst) {
-      return inst.id === state.activeId
-    })[0] || null
-  )
-}
-
-// Writes to the active instance only. Callers pass the same key names they
-// used before (open_content, hidetag ...), which keeps the diff readable and
-// makes it impossible to leak one instance's draft into another.
+// Thin callback wrappers: the call sites below were written against these
+// names, and keeping them avoids touching ten unrelated writes.
 function patchActiveInstance(patch, callback) {
-  loadInstanceState(function (state) {
-    const active = findActiveInstance(state)
-    if (!active) {
-      if (callback) callback(null)
-      return
-    }
-    const next = state.instances.map(function (inst) {
-      return inst.id === active.id ? Object.assign({}, inst, patch) : inst
-    })
-    writeInstances(next, state.activeId, function () {
-      if (callback) callback(Object.assign({}, active, patch))
-    })
+  window.MemosInstances.patch(patch).then(function (saved) {
+    if (callback) callback(saved)
   })
 }
 
-// Creates the first instance, or updates one by id. A new instance becomes
-// active: pressing "add instance" and saving means "connect me to this one".
 function upsertInstance(id, fields, callback) {
-  loadInstanceState(function (state) {
-    let saved = null
-    let next = state.instances
-    if (id) {
-      next = state.instances.map(function (inst) {
-        if (inst.id !== id) return inst
-        saved = Object.assign({}, inst, fields)
-        return saved
-      })
-    }
-    if (!saved) {
-      saved = Object.assign({ id: newInstanceId() }, fields)
-      next = state.instances.concat([saved])
-    }
-    writeInstances(next, id ? state.activeId : saved.id, function () {
-      if (callback) callback(saved, next)
-    })
+  window.MemosInstances.upsert(id, fields).then(function (saved) {
+    if (callback) callback(saved)
   })
 }
 
 function deleteInstance(id, callback) {
-  loadInstanceState(function (state) {
-    const next = state.instances.filter(function (inst) {
-      return inst.id !== id
-    })
-    const activeId = state.activeId === id ? (next[0] ? next[0].id : '') : state.activeId
-    writeInstances(next, activeId, function () {
-      if (callback) callback(next, activeId)
-    })
+  window.MemosInstances.remove(id).then(function (result) {
+    if (callback) callback(result.instances, result.activeId)
   })
 }
 
 function get_info(callback) {
   chrome.storage.sync.get(GLOBAL_DEFAULTS, function (globalItems) {
-    loadInstanceState(function (state) {
-      const active = findActiveInstance(state) || {}
-      const returnObject = Object.assign({}, GLOBAL_DEFAULTS, globalItems, active)
-      INSTANCE_KEYS.forEach(function (key) {
+    window.MemosInstances.readAll().then(function (snapshot) {
+      const active = snapshot.active || {}
+      // Only the active instance and its own runtime keys: pulling the whole
+      // storage in would let a legacy top-level apiUrl reappear in the form
+      // after the user deleted every instance.
+      const returnObject = Object.assign(
+        {},
+        GLOBAL_DEFAULTS,
+        globalItems,
+        active,
+        snapshot.runtime,
+        snapshot.files
+      )
+      window.MemosInstances.KEYS.all.forEach(function (key) {
         if (returnObject[key] === undefined) returnObject[key] = key === 'resourceIdList' ? [] : ''
       })
       returnObject.status = Boolean(active.apiUrl && active.apiTokens)
-      returnObject.instances = state.instances
-      returnObject.activeInstanceId = state.activeId
+      returnObject.instances = snapshot.instances
+      returnObject.activeInstanceId = snapshot.activeId
       returnObject.instanceName = active.name || ''
       if (callback) callback(returnObject)
     })
@@ -1239,14 +1101,14 @@ get_info(function (info) {
 
 chrome.storage.onChanged.addListener(function (changes, areaName) {
   if (areaName !== 'sync') return
-  if (!changes[INSTANCES_KEY]) return
-  // Only the active instance feeds the upload list; a write to another one
-  // must not blank out what is on screen.
-  const next = Array.isArray(changes[INSTANCES_KEY].newValue) ? changes[INSTANCES_KEY].newValue : []
-  const active = next.filter(function (inst) {
-    return inst && inst.id === instanceState.activeId
-  })[0]
-  pendingAttachments = active && Array.isArray(active.resourceIdList) ? active.resourceIdList : []
+  const id = instanceState.activeId
+  if (!id) return
+  // Attachments live in their own per-instance key now; a write to another
+  // instance must not blank out the list on screen.
+  const change = changes[window.MemosInstances.filesKey(id)]
+  if (!change) return
+  const value = change.newValue
+  pendingAttachments = value && Array.isArray(value.resourceIdList) ? value.resourceIdList : []
   renderUploadList(pendingAttachments)
 })
 

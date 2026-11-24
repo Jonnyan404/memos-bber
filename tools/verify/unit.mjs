@@ -301,5 +301,159 @@ eq('bg page and link are separate items', [desktop.state.menus[1].contexts, desk
   eq('bg android no click listener', mock.state.listeners.clicked.length, 0)
 }
 
+// ---------------------------------------------------------------- instances
+// Storage layout: connections in memosInstances, draft/tag filter in
+// instanceRuntime_<id>, attachments in instanceFiles_<id>. These run against a
+// fake chrome.storage, which is the only way to cover the migration paths
+// (flat install -> list, interim in-object runtime -> separate keys) without a
+// browser: the UI scenario always starts from an empty profile.
+{
+  function loadInstances(initial) {
+    const store = JSON.parse(JSON.stringify(initial || {}))
+    const sync = {
+      get(defaults, cb) {
+        let out = {}
+        if (defaults === null || defaults === undefined) {
+          out = Object.assign({}, store)
+        } else if (Array.isArray(defaults)) {
+          defaults.forEach((k) => {
+            if (store[k] !== undefined) out[k] = store[k]
+          })
+        } else {
+          Object.keys(defaults).forEach((k) => {
+            out[k] = store[k] !== undefined ? store[k] : defaults[k]
+          })
+        }
+        setTimeout(() => cb(out), 0)
+      },
+      set(items, cb) {
+        Object.keys(items).forEach((k) => {
+          store[k] = JSON.parse(JSON.stringify(items[k]))
+        })
+        setTimeout(() => cb && cb(), 0)
+      },
+      remove(keys, cb) {
+        ;[].concat(keys).forEach((k) => {
+          delete store[k]
+        })
+        setTimeout(() => cb && cb(), 0)
+      }
+    }
+    const context = {
+      window: {},
+      chrome: { runtime: {}, storage: { sync } },
+      console,
+      Date,
+      JSON,
+      Math,
+      URL,
+      Promise
+    }
+    vm.createContext(context)
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/js/instances.js'), 'utf8'), context)
+    return { api: context.window.MemosInstances, store }
+  }
+
+  const empty = loadInstances({})
+  const emptyState = await empty.api.load()
+  eq('instances: empty storage has no instance', [emptyState.instances.length, emptyState.activeId], [0, ''])
+
+  const flat = loadInstances({
+    apiUrl: 'https://memos.example.com/',
+    apiTokens: 'tok',
+    apiVersion: '0.31.0',
+    open_content: 'draft kept',
+    resourceIdList: [{ name: 'one' }],
+    hidetag: '#hide'
+  })
+  const migrated = await flat.api.load()
+  const flatId = migrated.activeId
+  eq(
+    'instances: flat install migrates to one instance',
+    [migrated.instances.length, migrated.instances[0].apiUrl, migrated.instances[0].name],
+    [1, 'https://memos.example.com/', 'example']
+  )
+  eq(
+    'instances: runtime moved to its own key',
+    [flat.store['instanceRuntime_' + flatId].open_content, flat.store['instanceRuntime_' + flatId].hidetag],
+    ['draft kept', '#hide']
+  )
+  eq('instances: attachments moved to their own key', flat.store['instanceFiles_' + flatId].resourceIdList, [{ name: 'one' }])
+  eq('instances: legacy keys kept for a downgrade', flat.store.apiUrl, 'https://memos.example.com/')
+  eq(
+    'instances: connection objects stay small',
+    ['open_content' in flat.store.memosInstances[0], 'resourceIdList' in flat.store.memosInstances[0]],
+    [false, false]
+  )
+
+  const interim = loadInstances({
+    memosInstances: [
+      {
+        id: 'x1',
+        name: 'old',
+        apiUrl: 'https://a.test/',
+        apiTokens: 't',
+        open_content: 'legacy draft',
+        resourceIdList: [{ name: 'two' }]
+      }
+    ],
+    activeInstanceId: 'x1'
+  })
+  await interim.api.load()
+  eq(
+    'instances: interim runtime is split out',
+    [interim.store.instanceRuntime_x1.open_content, interim.store.instanceFiles_x1.resourceIdList],
+    ['legacy draft', [{ name: 'two' }]]
+  )
+  eq(
+    'instances: interim fields leave the connection object',
+    ['open_content' in interim.store.memosInstances[0], 'resourceIdList' in interim.store.memosInstances[0]],
+    [false, false]
+  )
+
+  const two = loadInstances({
+    memosInstances: [
+      { id: 'a1', name: 'A', apiUrl: 'https://a.test/', apiTokens: 'ta' },
+      { id: 'b1', name: 'B', apiUrl: 'https://b.test/', apiTokens: 'tb' }
+    ],
+    activeInstanceId: 'a1'
+  })
+  await two.api.patch({ open_content: 'AAA' })
+  await two.api.setActive('b1')
+  await two.api.patch({ open_content: 'BBB', resourceIdList: [{ name: 'f' }] })
+  await two.api.setActive('a1')
+  const rtA = await two.api.readRuntime('a1')
+  const rtB = await two.api.readRuntime('b1')
+  eq('instances: drafts stay per instance', [rtA.runtime.open_content, rtB.runtime.open_content], ['AAA', 'BBB'])
+  eq('instances: attachments stay per instance', [rtA.files.resourceIdList, rtB.files.resourceIdList], [[], [{ name: 'f' }]])
+
+  const snapshot = await two.api.readAll()
+  eq('instances: readAll flattens the active instance', [snapshot.active.name, snapshot.flat.open_content], ['A', 'AAA'])
+
+  await two.api.patch({ disallowPublic: '1' })
+  eq('instances: connection fields write the list', two.store.memosInstances[0].disallowPublic, '1')
+  eq(
+    'instances: connection patch leaves the runtime key alone',
+    'disallowPublic' in (two.store.instanceRuntime_a1 || {}),
+    false
+  )
+
+  await two.api.remove('b1')
+  eq(
+    'instances: delete removes the runtime keys',
+    ['instanceRuntime_b1' in two.store, 'instanceFiles_b1' in two.store],
+    [false, false]
+  )
+  eq('instances: delete keeps the list consistent', two.store.memosInstances.length, 1)
+
+  const fresh = loadInstances({})
+  const created = await fresh.api.upsert(null, { apiUrl: 'https://new.test/', apiTokens: 't' })
+  eq(
+    'instances: first save creates and activates',
+    [fresh.store.memosInstances.length, fresh.store.activeInstanceId, fresh.store.memosInstances[0].name],
+    [1, created.id, 'new']
+  )
+}
+
 console.log(`\n${failures === 0 ? 'all unit checks passed' : failures + ' unit checks failed'}`)
 process.exit(failures === 0 ? 0 : 1)

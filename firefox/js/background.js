@@ -201,7 +201,9 @@ function joinDraft(existing, block) {
 
 // With several servers configured, the draft the context menu appends to lives
 // on the active instance: a top-level open_content would be a key that no
-// build reads any more, and the text would look simply lost.
+// build reads any more, and the text would look simply lost. The runtime state
+// sits in its own per-instance key so a big attachment list cannot push it
+// over the 8KB item limit.
 async function appendToActiveDraft(block) {
   const state = await storageSyncGet({ memosInstances: null, activeInstanceId: '' })
   const list = Array.isArray(state.memosInstances) ? state.memosInstances : []
@@ -224,16 +226,17 @@ async function appendToActiveDraft(block) {
     return
   }
 
-  const next = list.map((inst) =>
-    inst.id === active.id
-      ? Object.assign({}, inst, {
-          open_action: 'save_text',
-          open_content: joinDraft(inst.open_content, block)
-        })
-      : inst
-  )
+  const key = 'instanceRuntime_' + active.id
+  const stored = await storageSyncGet({
+    [key]: { open_action: '', open_content: '', hidetag: '', showtag: '' }
+  })
+  const runtime = Object.assign({}, stored[key] || {})
+  runtime.open_action = 'save_text'
+  // An install caught mid-migration may still carry the draft inside the
+  // connection object; treat it as the base rather than dropping it.
+  runtime.open_content = joinDraft(runtime.open_content || active.open_content, block)
   await new Promise((resolve) => {
-    chrome.storage.sync.set({ memosInstances: next }, () => {
+    chrome.storage.sync.set({ [key]: runtime }, () => {
       void chrome.runtime.lastError
       resolve()
     })

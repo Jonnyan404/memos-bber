@@ -141,6 +141,7 @@ for (const bundle of BUNDLES) {
   const oper = exists(path.join(dir, 'js/oper.js')) ? read(path.join(dir, 'js/oper.js')) : ''
   const css = exists(path.join(dir, 'css/main.css')) ? read(path.join(dir, 'css/main.css')) : ''
   const adapter = exists(path.join(dir, 'js/compat/memosApi.js')) ? read(path.join(dir, 'js/compat/memosApi.js')) : ''
+  const instances = exists(path.join(dir, 'js/instances.js')) ? read(path.join(dir, 'js/instances.js')) : ''
   check(bundle, 'adapter exposes detect()', /MemosApiAdapter\s*=\s*{[\s\S]*detect: detect/.test(adapter))
   check(bundle, 'settings use adapter.detect()', oper.includes('adapter.detect('))
   check(bundle, 'failures show reason', oper.includes('memoErrorText(') && !/msg\('memoFailed'\)\s*}\)\s*}\s*\)\s*}\s*$/.test(oper))
@@ -257,18 +258,29 @@ for (const bundle of BUNDLES) {
   )
   check(
     bundle,
-    'instances stored as a list, not flat keys',
-    oper.includes("const INSTANCES_KEY = 'memosInstances'") &&
-      oper.includes("const ACTIVE_INSTANCE_KEY = 'activeInstanceId'") &&
-      oper.includes('function loadInstanceState') &&
-      oper.includes('function patchActiveInstance')
+    'instance storage lives in its own file',
+    scripts.indexOf('js/instances.js') !== -1 &&
+      scripts.indexOf('js/instances.js') < scripts.indexOf('js/oper.js') &&
+      oper.includes('window.MemosInstances') &&
+      !oper.includes('const INSTANCE_KEYS = [')
   )
   check(
     bundle,
     'one-time migration adopts the old connection',
-    oper.includes('function pickInstanceKeys') &&
-      oper.includes('function defaultInstanceName') &&
-      /writeInstances\(\[migrated\], migrated\.id/.test(oper)
+    instances.includes('async function migrateFlat') &&
+      instances.includes('async function splitLeftoverRuntime') &&
+      instances.includes("const INSTANCES_KEY = 'memosInstances'") &&
+      instances.includes("RUNTIME_PREFIX = 'instanceRuntime_'") &&
+      instances.includes("FILES_PREFIX = 'instanceFiles_'")
+  )
+  check(
+    bundle,
+    'heavy state has its own per-instance key',
+    instances.includes("const FILES_KEYS = ['resourceIdList']") &&
+      instances.includes('function runtimeKey(') &&
+      instances.includes('function filesKey(') &&
+      // The connection object must not carry the draft or the attachment list.
+      !/CONNECTION_KEYS = \[[^\]]*open_content/.test(instances)
   )
   check(
     bundle,
@@ -352,7 +364,14 @@ check('shared', 'adapter identical in all bundles', unique.size === 1, adapterHa
 
 // The popup is one implementation shared by all three bundles now that the
 // Firefox-only drag preview was folded into the common resize code.
-const popupFiles = ['js/oper.js', 'js/background.js', 'js/config.js', 'popup.html', 'css/main.css']
+const popupFiles = [
+  'js/oper.js',
+  'js/background.js',
+  'js/config.js',
+  'js/instances.js',
+  'popup.html',
+  'css/main.css'
+]
 for (const file of popupFiles) {
   const hashes = BUNDLES.map((b) => [b, hash(path.join(ROOT, b, file))])
   check(

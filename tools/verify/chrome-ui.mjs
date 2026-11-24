@@ -278,15 +278,18 @@ async function waitFor(cdp, expression, timeoutMs = 8000) {
   return false
 }
 
-// Per-instance values live inside memosInstances now (draft, attachments, tag
-// filter, visibility), so assertions must not read the old top-level keys --
-// doing so would pass only on an install that has not been migrated yet.
-// These mirror what get_info() hands to the popup: globals plus the active
-// instance flattened over them.
+// Per-instance values live in memosInstances / instanceRuntime_<id> /
+// instanceFiles_<id> now, so assertions must not read the old top-level keys --
+// that would pass only on an install that has not been migrated yet. These
+// mirror what get_info() hands to the popup: globals plus the active instance
+// and its runtime flattened over them.
 function activeInstanceExpr(probe) {
   return `new Promise((r) => chrome.storage.sync.get(null, (all) => {
     const list = Array.isArray(all.memosInstances) ? all.memosInstances : []
-    const active = list.filter((x) => x.id === all.activeInstanceId)[0] || list[0] || {}
+    const base = list.filter((x) => x.id === all.activeInstanceId)[0] || list[0] || {}
+    const active = Object.assign({}, base,
+      base.id ? all['instanceRuntime_' + base.id] || {} : {},
+      base.id ? all['instanceFiles_' + base.id] || {} : {})
     r(Boolean(${probe}))
   }))`
 }
@@ -297,7 +300,9 @@ async function readInstanceState(cdp) {
     `new Promise((r) => chrome.storage.sync.get(null, (all) => {
       const list = Array.isArray(all.memosInstances) ? all.memosInstances : []
       const active = list.filter((x) => x.id === all.activeInstanceId)[0] || list[0] || {}
-      r(Object.assign({}, all, active))
+      const runtime = active.id ? all['instanceRuntime_' + active.id] || {} : {}
+      const files = active.id ? all['instanceFiles_' + active.id] || {} : {}
+      r(Object.assign({}, all, active, runtime, files, { raw: all }))
     }))`,
     { awaitPromise: true }
   )
@@ -798,6 +803,72 @@ async function main() {
       )
       console.log('instance menu after add:', JSON.stringify(after))
 
+      // Round trip: type on B, switch to A, type on A, switch back to B.
+      // Without per-instance drafts the text either leaks across servers or is
+      // lost on the reload that switching performs.
+      const readDraft = () => evaluate(cdp, `(() => document.querySelector('textarea[name=text]').value)()`)
+      const waitReady = () =>
+        waitFor(
+          cdp,
+          `(() => Boolean(window.jQuery && document.getElementById('instanceToggle') && document.querySelector('textarea[name=text]')))()`,
+          15000
+        )
+      const switchTo = async (index) => {
+        await evaluate(cdp, `(() => { document.getElementById('instanceToggle').click(); return true })()`)
+        await sleep(150)
+        await evaluate(
+          cdp,
+          `(() => {
+            const items = document.querySelectorAll('#instanceList [data-instance-id]')
+            const target = items[${index}]
+            if (!target) return false
+            target.click()
+            return true
+          })()`
+        )
+        await sleep(400)
+        return waitReady()
+      }
+      const draftB = await readDraft()
+      const emptyOnB = draftB === ''
+      console.log('draft on the new instance:', JSON.stringify(draftB))
+
+      await evaluate(
+        cdp,
+        `(() => {
+          document.querySelector('textarea[name=text]').value = 'draft-on-B'
+          return true
+        })()`
+      )
+      const backToA = await switchTo(0)
+      const draftA = await readDraft()
+      await evaluate(
+        cdp,
+        `(() => {
+          document.querySelector('textarea[name=text]').value = 'draft-on-A'
+          return true
+        })()`
+      )
+      const backToB = await switchTo(1)
+      const draftBAgain = await readDraft()
+      const perInstance = await evaluate(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(null, (all) => {
+          const list = Array.isArray(all.memosInstances) ? all.memosInstances : []
+          const byName = {}
+          list.forEach((inst) => {
+            const rt = all['instanceRuntime_' + inst.id] || {}
+            byName[inst.name] = rt.open_content
+          })
+          r(byName)
+        }))`,
+        { awaitPromise: true }
+      )
+      console.log(
+        'draft round trip:',
+        JSON.stringify({ emptyOnB, draftA, backToA, draftBAgain, backToB, perInstance })
+      )
+
       // Leave the profile as it was found: a stale second instance would make
       // the next local run start from the wrong state.
       await evaluate(
@@ -809,13 +880,91 @@ async function main() {
         { awaitPromise: true }
       )
 
-      const okInstances = okChip && okMenu && okForm && added && after.count >= 2 && after.current === 1
+      const okDrafts =
+        emptyOnB && backToA && backToB && draftA === '' && draftBAgain === 'draft-on-B' &&
+        perInstance['ci-second'] === 'draft-on-B'
+
+      const okInstances =
+        okChip && okMenu && okForm && added && after.count >= 2 && after.current === 1 && okDrafts
       console.log(
         okInstances
           ? 'PASS instance chip names the active server, lists all of them, and adds a new one'
           : 'FAIL instance switching regressed'
       )
       if (!okInstances) process.exitCode = 1
+      return
+    }
+
+    if (SCENARIO === 'migrate') {
+      // Installs from before 2026.11 kept every key flat. Seed exactly that
+      // shape, reload, and require the popup to adopt it: the token must still
+      // connect, and the half-written draft must survive the move.
+      await evaluate(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.clear(() => {
+          chrome.storage.sync.set({
+            apiUrl: ${JSON.stringify(TARGET_URL)},
+            apiTokens: ${JSON.stringify(TOKEN)},
+            apiVersion: '0.26.1',
+            open_content: 'legacy draft',
+            hidetag: '#old',
+            memo_lock: 'PRIVATE'
+          }, r)
+        }))`,
+        { awaitPromise: true }
+      )
+      await evaluate(cdp, `(() => { location.reload(); return true })()`).catch(() => {})
+      const chipReady = await waitFor(
+        cdp,
+        `(() => {
+          const name = document.getElementById('instanceName')
+          return Boolean(name && name.textContent.trim())
+        })()`,
+        15000
+      )
+      const migrated = await readInstanceState(cdp)
+      const view = await evaluate(
+        cdp,
+        `(() => {
+          const area = document.querySelector('textarea[name=text]')
+          const url = document.getElementById('apiUrl')
+          const name = document.getElementById('instanceName')
+          return {
+            draft: area ? area.value : null,
+            apiUrl: url ? url.value : null,
+            chip: name ? name.textContent.trim() : ''
+          }
+        })()`
+      )
+      const migratedId = migrated.instances[0] ? migrated.instances[0].id : ''
+      const migratedRuntime = (migrated.raw && migrated.raw['instanceRuntime_' + migratedId]) || {}
+      console.log(
+        'migrate:',
+        JSON.stringify({
+          chipReady,
+          count: migrated.instances.length,
+          chip: view.chip,
+          draft: view.draft,
+          runtimeDraft: migratedRuntime.open_content,
+          legacyKept: Boolean(migrated.raw && migrated.raw.apiUrl)
+        })
+      )
+      const okMigrate =
+        chipReady &&
+        migrated.instances.length === 1 &&
+        migrated.instances[0].apiUrl === TARGET_URL &&
+        Boolean(migrated.instances[0].apiTokens) &&
+        migratedRuntime.open_content === 'legacy draft' &&
+        migratedRuntime.hidetag === '#old' &&
+        view.draft === 'legacy draft' &&
+        view.apiUrl === TARGET_URL &&
+        Boolean(migrated.raw && migrated.raw.apiUrl)
+      console.log(
+        okMigrate
+          ? 'PASS flat settings become one instance, keeping the token and the draft'
+          : 'FAIL migration lost the connection or the draft'
+      )
+      if (!okMigrate) process.exitCode = 1
       return
     }
 
