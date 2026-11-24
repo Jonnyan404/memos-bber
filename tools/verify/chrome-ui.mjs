@@ -278,6 +278,31 @@ async function waitFor(cdp, expression, timeoutMs = 8000) {
   return false
 }
 
+// Per-instance values live inside memosInstances now (draft, attachments, tag
+// filter, visibility), so assertions must not read the old top-level keys --
+// doing so would pass only on an install that has not been migrated yet.
+// These mirror what get_info() hands to the popup: globals plus the active
+// instance flattened over them.
+function activeInstanceExpr(probe) {
+  return `new Promise((r) => chrome.storage.sync.get(null, (all) => {
+    const list = Array.isArray(all.memosInstances) ? all.memosInstances : []
+    const active = list.filter((x) => x.id === all.activeInstanceId)[0] || list[0] || {}
+    r(Boolean(${probe}))
+  }))`
+}
+
+async function readInstanceState(cdp) {
+  return evaluate(
+    cdp,
+    `new Promise((r) => chrome.storage.sync.get(null, (all) => {
+      const list = Array.isArray(all.memosInstances) ? all.memosInstances : []
+      const active = list.filter((x) => x.id === all.activeInstanceId)[0] || list[0] || {}
+      r(Object.assign({}, all, active))
+    }))`,
+    { awaitPromise: true }
+  )
+}
+
 async function capture(cdp, file) {
   await cdp.send('Page.enable').catch(() => {})
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
@@ -618,7 +643,7 @@ async function main() {
       return
     }
 
-    const isSavedExpr = `new Promise((resolve) => chrome.storage.sync.get(['apiUrl','apiTokens','apiVersion','apiBase'], (v) => resolve(Boolean(v.apiUrl && v.apiTokens))))`
+    const isSavedExpr = activeInstanceExpr('active.apiUrl && active.apiTokens')
     let saved = await waitFor(cdp, isSavedExpr, 8000)
     if (!saved) {
       // A cold container can reject the first detection request; retry once.
@@ -630,7 +655,7 @@ async function main() {
       const partial = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, { awaitPromise: true })
       throw new Error('settings were not saved; toast=' + JSON.stringify(toast) + ' storage=' + JSON.stringify(partial))
     }
-    const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(null, r))`, { awaitPromise: true })
+    const stored = await readInstanceState(cdp)
     console.log(`saved: version=${stored.apiVersion || '-'} base=${stored.apiBase || '-'} era=${stored.apiFlavor || '-'}`)
 
     // Issue #9: the panel has to answer "which extension / which server am I
@@ -1016,7 +1041,7 @@ async function main() {
       await cdp.send('DOM.setFileInputFiles', { files: [png], nodeId: input.nodeId })
       const uploaded = await waitFor(
         cdp,
-        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length > 0)))`,
+        activeInstanceExpr('(active.resourceIdList || []).length > 0'),
         15000
       )
       if (!uploaded) throw new Error('attachment was not uploaded')
@@ -1063,7 +1088,7 @@ async function main() {
 
       const uploaded = await waitFor(
         cdp,
-        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length > 0)))`,
+        activeInstanceExpr('(active.resourceIdList || []).length > 0'),
         20000
       )
       if (!uploaded) throw new Error('attachment was not uploaded')
@@ -1115,7 +1140,7 @@ async function main() {
 
       const recovered = await waitFor(
         cdp,
-        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length > 0)))`,
+        activeInstanceExpr('(active.resourceIdList || []).length > 0'),
         20000
       )
       console.log(
@@ -1280,11 +1305,7 @@ async function main() {
         })()`
       )
       await sleep(200)
-      const storedText = await evaluate(
-        cdp,
-        `new Promise((r) => chrome.storage.sync.get(['open_content'], r))`,
-        { awaitPromise: true }
-      )
+      const storedText = await readInstanceState(cdp)
       const expected = 'existing\n\nhttps://drop.test/a?b=1\n\nplain dropped text\n'
       console.log('drop text value:', JSON.stringify(result))
       const okText = result === expected && storedText.open_content === expected
@@ -1436,14 +1457,10 @@ async function main() {
       )
       const uploaded = await waitFor(
         cdp,
-        `new Promise((r) => chrome.storage.sync.get(['resourceIdList'], (v) => r((v.resourceIdList || []).length >= 2)))`,
+        activeInstanceExpr('(active.resourceIdList || []).length >= 2'),
         20000
       )
-      const state = await evaluate(
-        cdp,
-        `new Promise((r) => chrome.storage.sync.get(['resourceIdList', 'open_content', 'open_action'], r))`,
-        { awaitPromise: true }
-      )
+      const state = await readInstanceState(cdp)
       console.log('drop:', JSON.stringify({ ...active, count: (state.resourceIdList || []).length, draft: state.open_content }))
 
       const okDrop =

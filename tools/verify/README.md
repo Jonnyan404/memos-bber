@@ -80,6 +80,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `drop-text` | 拖入 `text/uri-list` / `text/plain` 会追加进草稿（URI 优先、去注释行、空行分隔），并同步写入 `open_content` |
 | `header-links` | 头部 Ko-fi 赞赏与 GitHub 两个图标入口可见、有可访问名称与悬停说明、不与标题和其他头部控件重叠，点击后各自在真实浏览器里打开配置的页面 |
 | `settings` | 设置面板同时显示扩展版本（与 manifest 一致）与服务端版本（与已存的 `apiVersion` 一致）；输入网址 + 令牌后不保存直接重载页面，两个输入框的内容仍在（`storage.session` 草稿） |
+| `instances` | 头部实例 chip 显示当前实例名、有可访问名称、状态点为「已连接」；点开菜单列出全部实例且恰好一个标记为当前，并显示主机与服务端版本；点「+ 添加实例」后设置面板展开且名称/网址/令牌三个输入框为空（否则下一次保存会覆盖当前服务器）；填入第二个实例保存后 `memosInstances` 有两条且 `activeInstanceId` 指向新实例，菜单里两个条目只有一个当前；结束时把存储恢复原样 |
 
 ## 4. 它做了什么 / 坑
 

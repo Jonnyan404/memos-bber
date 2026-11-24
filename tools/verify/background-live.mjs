@@ -232,12 +232,26 @@ async function main() {
     })`)
     check('keyboard command registered', JSON.parse(commands).includes('open-extension'), commands)
 
+    // The menu appends to the ACTIVE instance's draft now, so seed one and read
+    // it back from there. The previous state is restored afterwards: this runs
+    // against the same profile the popup scenarios share.
     const appended = await evaluate(`(async () => {
-      await new Promise((r) => chrome.storage.sync.set({ open_action: 'save_text', open_content: '' }, r))
+      const before = await new Promise((r) => chrome.storage.sync.get(['memosInstances', 'activeInstanceId'], r))
+      const instance = {
+        id: 'live-test',
+        name: 'live',
+        apiUrl: 'https://live.test/',
+        apiTokens: 'live-token',
+        open_action: 'save_text',
+        open_content: ''
+      }
+      await new Promise((r) => chrome.storage.sync.set({ memosInstances: [instance], activeInstanceId: 'live-test' }, r))
       await handleMenuClick({ menuItemId: 'Memos-send-page', pageUrl: 'https://live.test/a?b=1' }, { id: 1, windowId: 1 })
-      const items = await new Promise((r) => chrome.storage.sync.get(['open_content'], r))
-      await new Promise((r) => chrome.storage.sync.set({ open_content: '' }, r))
-      return JSON.stringify(items)
+      const state = await new Promise((r) => chrome.storage.sync.get(['memosInstances'], r))
+      const active = (state.memosInstances || []).filter((x) => x.id === 'live-test')[0] || {}
+      const restore = JSON.parse(JSON.stringify(before))
+      await new Promise((r) => chrome.storage.sync.set(restore, r))
+      return JSON.stringify({ open_content: active.open_content })
     })()`)
     check(
       'menu click appends the page url',
