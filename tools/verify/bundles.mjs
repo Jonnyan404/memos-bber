@@ -142,6 +142,7 @@ for (const bundle of BUNDLES) {
   const css = exists(path.join(dir, 'css/main.css')) ? read(path.join(dir, 'css/main.css')) : ''
   const adapter = exists(path.join(dir, 'js/compat/memosApi.js')) ? read(path.join(dir, 'js/compat/memosApi.js')) : ''
   const instances = exists(path.join(dir, 'js/instances.js')) ? read(path.join(dir, 'js/instances.js')) : ''
+  const theme = exists(path.join(dir, 'js/theme.js')) ? read(path.join(dir, 'js/theme.js')) : ''
   check(bundle, 'adapter exposes detect()', /MemosApiAdapter\s*=\s*{[\s\S]*detect: detect/.test(adapter))
   check(bundle, 'settings use adapter.detect()', oper.includes('adapter.detect('))
   check(bundle, 'failures show reason', oper.includes('memoErrorText(') && !/msg\('memoFailed'\)\s*}\)\s*}\s*\)\s*}\s*$/.test(oper))
@@ -302,6 +303,36 @@ for (const bundle of BUNDLES) {
       css.includes('.instance-toggle') &&
       css.includes('.instance-admin-row')
   )
+  check(
+    bundle,
+    'header controls share one row and one shape',
+    html.includes('class="header-actions"') &&
+      html.includes('id="themeToggle"') &&
+      css.includes('.header-actions .header-btn') &&
+      // The gear, the language toggle, the theme toggle and both links must all
+      // be covered by the same rule, or the row drifts apart again.
+      css.includes('.header-actions .lang-toggle') &&
+      css.includes('.header-actions .header-links a') &&
+      /#blog_info_edit,?\s*\{/.test(css)
+  )
+  check(
+    bundle,
+    'theme toggle cycles system, light and dark',
+    theme.includes("const MODES = ['auto', 'light', 'dark']") &&
+      theme.includes('root.dataset.theme') &&
+      html.includes('data-mode="auto"') &&
+      css.includes("html[data-theme='dark']") &&
+      scripts.indexOf('js/theme.js') !== -1 &&
+      scripts.indexOf('js/theme.js') < scripts.indexOf('js/oper.js')
+  )
+  check(
+    bundle,
+    'the connection form can edit a non-active instance',
+    oper.includes('function editInstance') &&
+      oper.includes("formTarget.mode === 'edit'") &&
+      oper.includes("msg('instanceFormEdit'") &&
+      html.includes('id="instanceFormHint"')
+  )
 
   // every locale must carry the new error strings (English fallback is fine,
   // but a missing key would silently show the raw key name)
@@ -333,7 +364,13 @@ for (const bundle of BUNDLES) {
         'instanceDeleteConfirm',
         'instanceDeleteLast',
         'instanceDeleted',
-        'instanceNamePlaceholder'
+        'instanceNamePlaceholder',
+        'instanceEdit',
+        'instanceFormNew',
+        'instanceFormEdit',
+        'themeAuto',
+        'themeLight',
+        'themeDark'
       ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))

@@ -1,3 +1,40 @@
+/* Colour tokens. The dark block at the end only redefines these, so a component
+   written with the variables picks up both themes instead of needing its own
+   override. html[data-theme] is set by js/theme.js before first paint. */
+:root{
+    --bg: #f6f5f4;
+    --surface: #ffffff;
+    --surface-muted: #f3f4f6;
+    --field: #fafafa;
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+    --text: #374151;
+    --text-2: #555555;
+    --muted: #6b7280;
+    --muted-2: #9ca3af;
+    --accent: rgb(22,163,74);
+    --accent-soft: var(--accent-soft);
+    --accent-text: var(--accent-text);
+    --danger: #b3261e;
+}
+
+html[data-theme='dark']{
+    --bg: #16181c;
+    --surface: #1e2126;
+    --surface-muted: #272b31;
+    --field: #1a1d21;
+    --border: #33383f;
+    --border-strong: #454b54;
+    --text: #e6e8ec;
+    --text-2: #c3c7ce;
+    --muted: #9aa1ab;
+    --muted-2: #7c838d;
+    --accent: rgb(34,197,94);
+    --accent-soft: #1d3527;
+    --accent-text: #86efac;
+    --danger: #f87171;
+}
+
 button, input, textarea {
     font-family: inherit;
     font-size: 100%;
@@ -13,7 +50,7 @@ input:focus::-moz-placeholder ,.common-editor-inputer:focus::-moz-placeholder {
     color: #d3d3d3
 }
 input::placeholder ,.common-editor-inputer::placeholder {
-    color: #999;
+    color: var(--muted-2);
 }
 input:focus::placeholder ,.common-editor-inputer:focus::placeholder {
     color: #d3d3d3
@@ -21,7 +58,7 @@ input:focus::placeholder ,.common-editor-inputer:focus::placeholder {
 
 .body{
     min-width:360px;
-    background-color: #f6f5f4;
+    background-color: var(--bg);
     padding:0 1rem 1rem;
     font-family: eafont,PingFang SC,Hiragino Sans GB,Microsoft YaHei,STHeiti,WenQuanYi Micro Hei,Helvetica,Arial,sans-serif;
     font-size: 16px;
@@ -32,17 +69,17 @@ input:focus::placeholder ,.common-editor-inputer:focus::placeholder {
 
 a{color: #555;}
 .title{
-    width: 100px;
+    width: 5rem;
     cursor: pointer;
     font-size: 1.125rem;
     font-weight: 700;
     line-height: 2.5rem;
-    color: rgb(55,65,81);
+    color: var(--text);
 }
 .memo-editor,.random-item{
-    border: 2px solid rgb(229,231,235);
+    border: 2px solid var(--border);
     border-radius: .5rem;
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
     margin-top:0.8rem;
     padding: 0.6rem;
 }
@@ -106,8 +143,8 @@ a{color: #555;}
     display: none;
 }
 .random-item{
-    border: 1px solid rgb(229,231,235);
-    color: #666;
+    border: 1px solid var(--border);
+    color: var(--text-2);
     padding: 1rem;
 }
 .random-time{font-size:13px;margin-bottom:6px;color: #999;font-style:italic;}
@@ -128,10 +165,10 @@ a{color: #555;}
     right: 0;
     top: 0;
     z-index: 2;
-    border: 1px solid rgb(229,231,235);
+    border: 1px solid var(--border);
     border-radius: .25rem;
-    background-color: rgb(255,255,255);
-    color: #666;
+    background-color: var(--surface);
+    color: var(--text-2);
     font-size: .75rem;
     line-height: 1;
     padding: .25rem;
@@ -147,7 +184,7 @@ a{color: #555;}
 }
 .memo-editor #fullscreen:hover{
     opacity: 1;
-    background-color: rgb(243,244,246);
+    background-color: var(--surface-muted);
 }
 .common-editor-inputer,input.inputer{
     font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;
@@ -263,9 +300,9 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 }
 
 .settings-section{
-    border: 1px solid rgb(229,231,235);
+    border: 1px solid var(--border);
     border-radius: .5rem;
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
     padding: .75rem;
     display: flex;
     flex-direction: column;
@@ -275,27 +312,27 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .settings-section-title{
     font-size: .9rem;
     font-weight: 700;
-    color: rgb(55,65,81);
+    color: var(--text);
 }
 
 .settings-section-desc{
     font-size: .75rem;
     line-height: 1.35;
-    color: #7a7a7a;
+    color: var(--muted);
 }
 
 .settings-input{
     width: 100% !important;
     box-sizing: border-box;
-    border: 1px solid rgb(229,231,235);
+    border: 1px solid var(--border);
     border-radius: .35rem;
-    background-color: #fafafa;
+    background-color: var(--field);
     padding: .55rem .7rem;
 }
 
 .settings-input:focus{
     border-color: rgb(22,163,74);
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
 }
 
 .settings-textarea{
@@ -312,7 +349,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     gap: .15rem .75rem;
     font-size: .75rem;
     line-height: 1.4;
-    color: #6b7280;
+    color: var(--muted);
 }
 
 /* The spans start hidden and oper.js reveals them once it knows a value. */
@@ -342,20 +379,20 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 }
 .upload-list-title{
     font-size: .875rem;
-    color: #999;
+    color: var(--muted-2);
     margin-top: .5rem;
     margin-bottom: .25rem;
 }
 .upload-list{
-    border: 1px solid rgb(229,231,235);
+    border: 1px solid var(--border);
     border-radius: .5rem;
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
     padding: .25rem;
 }
 .upload-empty{
     padding: .5rem .75rem;
     font-size: .875rem;
-    color: #999;
+    color: var(--muted-2);
 }
 .upload-item{
     display:flex;
@@ -369,7 +406,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     border-top: 1px solid rgb(243,244,246);
 }
 .upload-item.drag-over{
-    background-color: rgb(243,244,246);
+    background-color: var(--surface-muted);
 }
 .upload-left{
     display:flex;
@@ -399,7 +436,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 }
 .upload-del:hover{
     opacity: 1;
-    background-color: rgb(243,244,246);
+    background-color: var(--surface-muted);
 }
 /* Upload progress: one bar for the whole batch, plus a retry affordance that
    only appears when something failed. */
@@ -423,7 +460,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: .8125rem;
-    color: #666;
+    color: var(--text-2);
 }
 .upload-progress-retry{
     flex: 0 0 auto;
@@ -435,7 +472,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     border-radius: .25rem;
 }
 .upload-progress-retry:hover{
-    background-color: rgb(243,244,246);
+    background-color: var(--surface-muted);
 }
 .upload-progress-retry[hidden]{
     display: none;
@@ -446,7 +483,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .upload-progress-track{
     height: 4px;
     border-radius: 999px;
-    background-color: rgb(229,231,235);
+    background-color: var(--border);
     overflow: hidden;
 }
 .upload-progress-bar{
@@ -552,7 +589,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     border: none;
     border-radius: 0;
     background-color: transparent;
-    color: #666;
+    color: var(--text-2);
     min-width: 24px;
     height: 24px;
     display: inline-flex;
@@ -567,7 +604,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .lang-toggle:hover,
 .lang-toggle[aria-expanded="true"]{
     background-color: transparent;
-    color: #666;
+    color: var(--text-2);
     opacity: 1;
 }
 
@@ -587,9 +624,9 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     right: 0;
     min-width: 8rem;
     padding: .25rem;
-    border: 1px solid rgb(229,231,235);
+    border: 1px solid var(--border);
     border-radius: .5rem;
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
     box-shadow: 0 8px 24px rgba(15,23,42,.12);
     z-index: 10;
 }
@@ -605,19 +642,19 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     padding: .4rem .5rem;
     border-radius: .35rem;
     background: transparent;
-    color: #555;
+    color: var(--text-2);
     font-size: .75rem;
     line-height: 1.25rem;
     cursor: pointer;
 }
 
 .lang-menu-item:hover{
-    background-color: rgb(243,244,246);
+    background-color: var(--surface-muted);
 }
 
 .lang-menu-item.active{
-    background-color: rgb(220,252,231);
-    color: rgb(22,101,52);
+    background-color: var(--accent-soft);
+    color: var(--accent-text);
     font-weight: 600;
 }
 
@@ -667,7 +704,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
    the real brand red #ff5e5b is only ~2.9:1 on white. */
 .kofi-link{
     border: 1px solid rgb(255 94 91 / .55);
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
     color: rgb(179,38,30);
 }
 
@@ -680,13 +717,13 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .header-icon-link{
     border: none;
     background-color: transparent;
-    color: #666;
+    color: var(--text-2);
     opacity: .65;
 }
 
 .header-icon-link:hover{
     opacity: 1;
-    background-color: rgb(243,244,246);
+    background-color: var(--surface-muted);
 }
 
 .header-icon-link:focus-visible{
@@ -700,7 +737,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
    name is ellipsised instead of being allowed to push those around. */
 .instance-switcher{
     position: absolute;
-    left: 6.6rem;
+    left: 5.4rem;
     top: .55rem;
 }
 
@@ -709,13 +746,13 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     align-items: center;
     gap: .28rem;
     height: 24px;
-    max-width: 6.2rem;
+    max-width: 5rem;
     box-sizing: border-box;
     padding: 0 .45rem;
-    border: 1px solid rgb(209,213,219);
+    border: 1px solid var(--border-strong);
     border-radius: 999px;
-    background-color: rgb(255,255,255);
-    color: #374151;
+    background-color: var(--surface);
+    color: var(--text);
     font-size: .75rem;
     line-height: 1;
     cursor: pointer;
@@ -739,7 +776,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 }
 
 .instance-dot.online{background-color: rgb(22,163,74);}
-.instance-dot.offline{background-color: rgb(179,38,30);}
+.instance-dot.offline{background-color: var(--danger);}
 
 .instance-name{
     min-width: 0;
@@ -760,9 +797,9 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     width: 17.25rem;
     box-sizing: border-box;
     padding: .25rem;
-    border: 1px solid rgb(229,231,235);
+    border: 1px solid var(--border);
     border-radius: .5rem;
-    background-color: rgb(255,255,255);
+    background-color: var(--surface);
     box-shadow: 0 8px 24px rgba(15,23,42,.12);
     z-index: 20;
 }
@@ -779,12 +816,12 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .instance-menu-title{
     font-size: .75rem;
     font-weight: 700;
-    color: #374151;
+    color: var(--text);
 }
 
 .instance-menu-count{
     font-size: .7rem;
-    color: #9ca3af;
+    color: var(--muted-2);
 }
 
 .instance-list{
@@ -807,7 +844,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 }
 
 .instance-item:hover{background-color: rgb(243,244,246);}
-.instance-item.active{background-color: rgb(220,252,231);}
+.instance-item.active{background-color: var(--accent-soft);}
 
 .instance-item-body{
     display: flex;
@@ -818,20 +855,20 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 
 .instance-item-name{
     font-size: .75rem;
-    color: #374151;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .instance-item.active .instance-item-name{
-    color: rgb(22,101,52);
+    color: var(--accent-text);
     font-weight: 700;
 }
 
 .instance-item-host{
     font-size: .7rem;
-    color: #6b7280;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -840,7 +877,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .instance-item-mark{
     flex-shrink: 0;
     font-size: .7rem;
-    color: rgb(22,101,52);
+    color: var(--accent-text);
 }
 
 .instance-menu-actions{
@@ -856,13 +893,13 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     padding: .35rem;
     border: none;
     border-radius: .35rem;
-    background-color: rgb(243,244,246);
-    color: #374151;
+    background-color: var(--surface-muted);
+    color: var(--text);
     font-size: .7rem;
     cursor: pointer;
 }
 
-.instance-action:hover{background-color: rgb(229,231,235);}
+.instance-action:hover{background-color: var(--border);}
 
 /* Settings panel: the instance list above the connection form. The form below
    edits whichever row is marked "current", so there is exactly one place that
@@ -881,7 +918,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     border-radius: .35rem;
 }
 
-.instance-admin-row.active{background-color: rgb(220,252,231);}
+.instance-admin-row.active{background-color: var(--accent-soft);}
 
 .instance-admin-body{
     display: flex;
@@ -892,7 +929,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 
 .instance-admin-name{
     font-size: .8rem;
-    color: #374151;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -900,7 +937,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 
 .instance-admin-host{
     font-size: .7rem;
-    color: #6b7280;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -909,23 +946,23 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
 .instance-admin-badge{
     flex-shrink: 0;
     font-size: .7rem;
-    color: rgb(22,101,52);
+    color: var(--accent-text);
 }
 
 .instance-admin-btn{
     flex-shrink: 0;
     padding: .15rem .45rem;
-    border: 1px solid rgb(209,213,219);
+    border: 1px solid var(--border-strong);
     border-radius: .3rem;
-    background-color: rgb(255,255,255);
-    color: #6b7280;
+    background-color: var(--surface);
+    color: var(--muted);
     font-size: .7rem;
     cursor: pointer;
 }
 
 .instance-admin-btn:hover{
     border-color: rgb(156,163,175);
-    color: #374151;
+    color: var(--text);
 }
 
 .instance-admin-btn.danger:hover{
@@ -939,20 +976,20 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     border: 1px dashed rgb(203,213,225);
     border-radius: .35rem;
     background: transparent;
-    color: #6b7280;
+    color: var(--muted);
     font-size: .72rem;
     cursor: pointer;
 }
 
 .instance-add:hover{
     border-color: rgb(156,163,175);
-    color: #374151;
+    color: var(--text);
 }
 
 .instance-empty{
     padding: .3rem .45rem;
     font-size: .72rem;
-    color: #9ca3af;
+    color: var(--muted-2);
 }
 
 /* Touch devices get a bigger target without changing the desktop header. */
@@ -1065,7 +1102,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     border-radius: .25rem;
     border-width: 1px;
     --tw-bg-opacity: 1;
-    background-color: rgb(255 255 255 / var(--tw-bg-opacity));
+    background-color: var(--surface);
     padding-left: .5rem;
     padding-right: .25rem;
 }
@@ -1116,7 +1153,7 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     overflow-y: auto;
     border-radius: .375rem;
     --tw-bg-opacity: 1;
-    background-color: rgb(255 255 255 / var(--tw-bg-opacity));
+    background-color: var(--surface);
     padding: .25rem;
     -ms-overflow-style: none;
     scrollbar-width: none
@@ -1234,4 +1271,154 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
         width: 28px;
         height: 28px;
     }
+}
+
+/* ---------------------------------------------------------------- header row */
+/* Every header control shares one button shape: same 24px box, same border,
+   same colour. They used to look like three unrelated things (red ring for
+   Ko-fi, plain grey text for GitHub, a 0.6-opacity glyph for the gear), and
+   adding a fifth icon on top of that would have made the row unreadable. */
+.header-actions{
+    position: absolute;
+    right: 1rem;
+    top: .55rem;
+    display: flex;
+    align-items: center;
+    gap: .28rem;
+}
+
+.header-actions .lang-switcher,
+.header-actions .header-links{
+    position: relative;
+    right: auto;
+    top: auto;
+    display: flex;
+    align-items: center;
+}
+
+.header-actions .header-btn,
+.header-actions .lang-toggle,
+.header-actions .header-links a,
+#blog_info_edit{
+    position: relative;
+    right: auto;
+    top: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background-color: var(--surface);
+    color: var(--muted);
+    opacity: 1;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.header-actions .header-btn:hover,
+.header-actions .lang-toggle:hover,
+.header-actions .header-links a:hover,
+#blog_info_edit:hover{
+    border-color: var(--border-strong);
+    background-color: var(--surface-muted);
+    color: var(--text);
+    opacity: 1;
+}
+
+.header-actions .header-btn:focus-visible,
+.header-actions .lang-toggle:focus-visible,
+.header-actions .header-links a:focus-visible,
+#blog_info_edit:focus-visible{
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.header-actions svg,
+#blog_info_edit svg.icon{
+    width: 15px;
+    height: 15px;
+    opacity: 1;
+}
+
+.header-actions .lang-toggle-text{
+    font-size: .7rem;
+    line-height: 1;
+}
+
+/* The Ko-fi entry no longer gets a brand-red ring: it keeps only the cup glyph
+   to tell it apart, which is what "same look as its neighbours" means here. */
+.header-actions .header-links .kofi-link,
+.header-actions .header-links .kofi-link:hover{
+    border-color: var(--border);
+    background-color: var(--surface);
+    color: var(--muted);
+}
+
+.header-actions .header-links .kofi-link:hover{
+    border-color: var(--border-strong);
+    background-color: var(--surface-muted);
+    color: var(--text);
+}
+
+/* Exactly one theme glyph is visible, chosen from data-mode. */
+#themeToggle .theme-icon{
+    display: none;
+}
+#themeToggle[data-mode='auto'] .theme-icon-auto,
+#themeToggle[data-mode='light'] .theme-icon-light,
+#themeToggle[data-mode='dark'] .theme-icon-dark{
+    display: block;
+}
+
+.header-actions .header-links a[hidden]{
+    display: none;
+}
+
+/* Dark theme specifics: only colours that carry meaning need their own rule,
+   everything else follows the tokens defined at the top of this file. */
+html[data-theme='dark'] .common-tools-container svg path{
+    fill: var(--muted);
+}
+
+html[data-theme='dark'] .lang-menu,
+html[data-theme='dark'] .instance-menu{
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+
+html[data-theme='dark'] .settings-input:focus{
+    background-color: var(--field);
+}
+
+html[data-theme='dark'] .common-editor-inputer{
+    color: var(--text);
+}
+
+html[data-theme='dark'] ::placeholder{
+    color: var(--muted-2);
+}
+
+@media (pointer: coarse){
+    .header-actions .header-btn,
+    .header-actions .lang-toggle,
+    .header-actions .header-links a,
+    #blog_info_edit{
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+    }
+    .header-actions{
+        gap: .25rem;
+    }
+}
+
+/* Base text colour: most components set their own, but the editor header and
+   the plain text inside .body inherited the UA default (black). */
+html[data-theme='dark'] .body{
+    color: var(--text);
 }

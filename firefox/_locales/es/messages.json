@@ -301,5 +301,23 @@
   },
   "instanceNamePlaceholder": {
     "message": "Nombre, p. ej. Casa"
+  },
+  "instanceEdit": {
+    "message": "Editar"
+  },
+  "instanceFormNew": {
+    "message": "Al guardar se añade una instancia y se cambia a ella."
+  },
+  "instanceFormEdit": {
+    "message": "Editando «$1». Guardar no cambia la instancia actual."
+  },
+  "themeAuto": {
+    "message": "Tema: sistema"
+  },
+  "themeLight": {
+    "message": "Tema: claro"
+  },
+  "themeDark": {
+    "message": "Tema: oscuro"
   }
 }

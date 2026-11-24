@@ -301,5 +301,23 @@
   },
   "instanceNamePlaceholder": {
     "message": "이름, 예: 집"
+  },
+  "instanceEdit": {
+    "message": "편집"
+  },
+  "instanceFormNew": {
+    "message": "저장하면 인스턴스가 추가되고 그 인스턴스로 전환됩니다."
+  },
+  "instanceFormEdit": {
+    "message": "\"$1\"을(를) 편집 중입니다. 저장해도 현재 인스턴스는 바뀌지 않습니다."
+  },
+  "themeAuto": {
+    "message": "테마: 시스템"
+  },
+  "themeLight": {
+    "message": "테마: 라이트"
+  },
+  "themeDark": {
+    "message": "테마: 다크"
   }
 }

@@ -82,6 +82,7 @@ node tools/verify/chrome-ui.mjs --url ... --token ... --extension edge
 | `settings` | 设置面板同时显示扩展版本（与 manifest 一致）与服务端版本（与已存的 `apiVersion` 一致）；输入网址 + 令牌后不保存直接重载页面，两个输入框的内容仍在（`storage.session` 草稿） |
 | `instances` | 头部实例 chip 显示当前实例名、有可访问名称、状态点为「已连接」；点开菜单列出全部实例且恰好一个标记为当前，并显示主机与服务端版本；点「+ 添加实例」后设置面板展开且名称/网址/令牌三个输入框为空（否则下一次保存会覆盖当前服务器）；填入第二个实例保存后 `memosInstances` 有两条、名称按填写值保存、`activeInstanceId` 指向新实例；接着做 B→A→B 的往返，断言两个实例的草稿各自留在 `instanceRuntime_<id>` 里（切回 A 时编辑器为空、切回 B 时是 B 的文本）；结束时把存储恢复原样 |
 | `migrate` | 把存储清空后只写入 2026.11 之前的平铺键（`apiUrl`/`apiTokens`/`apiVersion`/`open_content`/`hidetag`），重载页面，断言旧的单实例配置被采纳成一个实例：chip 有名字、`memosInstances` 一条、`instanceRuntime_<id>` 里有原来的草稿与标签过滤、编辑器显示旧草稿、设置里的网址仍是原值，并且旧顶层键保留（回退旧版仍可用）。这条覆盖升级路径，UI 场景默认的空 profile 永远碰不到 |
+| `theme` | 主题按钮三态循环：从 `light` 点两次落到 `dark`、再点回到 `auto`；每一步断言 `html[data-theme]`、`data-mode` 与按钮一致，页面背景与卡片背景真的换了色，三种模式都只有一个图标可见；`uiTheme` 写进 `storage.sync`，重载后仍是 `auto`。另外所有场景都会检查顶部五个按钮同尺寸、同文字色、同边框色，且不与标题和实例 chip 重叠 |
 
 ## 4. 它做了什么 / 坑
 

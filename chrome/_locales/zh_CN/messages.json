@@ -301,5 +301,23 @@
   },
   "instanceNamePlaceholder": {
     "message": "实例名称，例如：个人"
+  },
+  "instanceEdit": {
+    "message": "编辑"
+  },
+  "instanceFormNew": {
+    "message": "保存后会新增一个实例并切换过去。"
+  },
+  "instanceFormEdit": {
+    "message": "正在编辑 $1，保存不会切换当前实例。"
+  },
+  "themeAuto": {
+    "message": "主题：跟随系统"
+  },
+  "themeLight": {
+    "message": "主题：亮色"
+  },
+  "themeDark": {
+    "message": "主题：暗色"
   }
 }

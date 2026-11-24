@@ -556,13 +556,15 @@ async function main() {
           const style = getComputedStyle(el)
           return {
             hidden: el.hasAttribute('hidden'),
-            href: el.href,
-            target: el.target,
-            rel: el.rel,
+            href: el.href || '',
+            target: el.target || '',
+            rel: el.rel || '',
             text: (el.textContent || '').trim(),
             aria: el.getAttribute('aria-label') || '',
             title: el.getAttribute('title') || '',
             display: style.display,
+            color: style.color,
+            borderColor: style.borderTopColor,
             left: Math.round(box.left),
             right: Math.round(box.right),
             width: Math.round(box.width),
@@ -571,11 +573,15 @@ async function main() {
         }
         const rect = (sel) => document.querySelector(sel).getBoundingClientRect()
         return {
+          gear: read('blog_info_edit'),
+          theme: read('themeToggle'),
+          lang: read('langToggle'),
           kofi: read('kofi'),
           github: read('github'),
           titleRight: Math.round(rect('.title').right),
-          langLeft: Math.round(rect('#lang_switcher').left),
-          gearLeft: Math.round(rect('#blog_info_edit').left)
+          chipRight: Math.round(rect('#instance_switcher').right),
+          actionsLeft: Math.round(rect('.header-actions').left),
+          viewport: window.innerWidth
         }
       })()`
     )
@@ -590,13 +596,30 @@ async function main() {
       entry.title.length > 0 &&
       entry.width >= 24 &&
       entry.height >= 24 &&
-      entry.left >= header.titleRight &&
-      entry.right <= Math.min(header.langLeft, header.gearLeft)
+      entry.left >= header.chipRight &&
+      entry.right <= header.viewport
+    // Every control in the row is the same button: same box, same text colour,
+    // same border. That is what "one look" means here, and it is checked rather
+    // than described.
+    const buttons = [header.gear, header.theme, header.lang, header.kofi, header.github]
+    const sameBox = buttons.every(
+      (entry) =>
+        !entry.missing && entry.display !== 'none' && entry.width === buttons[0].width && entry.height === buttons[0].height
+    )
+    const sameColour = buttons.every(
+      (entry) => entry.color === buttons[0].color && entry.borderColor === buttons[0].borderColor
+    )
     const headerOk =
-      linkOk(header.kofi, /^https:\/\/ko-fi\.com\//) && linkOk(header.github, /^https:\/\/github\.com\//)
+      linkOk(header.kofi, /^https:\/\/ko-fi\.com\//) &&
+      linkOk(header.github, /^https:\/\/github\.com\//) &&
+      !header.theme.missing &&
+      header.theme.aria.length > 0 &&
+      header.chipRight <= header.actionsLeft &&
+      sameBox &&
+      sameColour
     console.log(
       (headerOk ? 'PASS' : 'FAIL') +
-        ' header links (Ko-fi + GitHub) are visible, labelled and clear of the other controls',
+        ' header controls are one row, one size, one colour, clear of the title and the instance chip',
       JSON.stringify(header)
     )
     if (!headerOk) process.exitCode = 1
@@ -882,6 +905,78 @@ async function main() {
         JSON.stringify({ emptyOnB, draftA, backToA, draftBAgain, backToB, perInstance })
       )
 
+      // Editing a NON-active instance: the form must load that instance, and
+      // saving must leave activeInstanceId alone. Otherwise renaming a spare
+      // server would silently move the popup onto it.
+      const beforeEdit = await readInstanceState(cdp)
+      const activeBeforeEdit = beforeEdit.activeId
+      await evaluate(cdp, `(() => { openInstanceSettings(); return true })()`)
+      await sleep(200)
+      const editClick = await evaluate(
+        cdp,
+        `(() => {
+          const rows = document.querySelectorAll('#instanceAdminList [data-instance-id]')
+          const first = rows[0]
+          const edit = first ? first.querySelector('[data-instance-act="edit"]') : null
+          if (!edit) return { clicked: false, rows: rows.length }
+          edit.click()
+          return { clicked: true, rows: rows.length }
+        })()`
+      )
+      await sleep(250)
+      const editForm = await evaluate(
+        cdp,
+        `(() => {
+          const hint = document.getElementById('instanceFormHint')
+          return {
+            name: document.getElementById('instanceNameInput').value,
+            url: document.getElementById('apiUrl').value,
+            hintHidden: hint ? hint.hidden : true,
+            hint: hint ? hint.textContent.trim() : '',
+            visible: document.getElementById('blog_info').offsetParent !== null
+          }
+        })()`
+      )
+      await evaluate(
+        cdp,
+        `(() => {
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+          setter.call(document.getElementById('instanceNameInput'), 'renamed-a')
+          document.getElementById('instanceNameInput').dispatchEvent(new Event('input', { bubbles: true }))
+          return true
+        })()`
+      )
+      await evaluate(cdp, `(() => { document.getElementById('saveSettings').click(); return true })()`)
+      const renamed = await waitFor(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get(null, (all) => {
+          const list = Array.isArray(all.memosInstances) ? all.memosInstances : []
+          r(list.some((x) => x.name === 'renamed-a'))
+        }))`,
+        20000
+      )
+      const afterEdit = await readInstanceState(cdp)
+      console.log(
+        'instance edit:',
+        JSON.stringify({
+          clicked: editClick.clicked,
+          form: editForm,
+          renamed,
+          activeBefore: activeBeforeEdit,
+          activeAfter: afterEdit.activeId,
+          names: afterEdit.instances.map((x) => x.name)
+        })
+      )
+      const okEdit =
+        editClick.clicked &&
+        editForm.visible &&
+        Boolean(editForm.name) &&
+        Boolean(editForm.url) &&
+        editForm.hintHidden === false &&
+        renamed &&
+        afterEdit.activeId === activeBeforeEdit &&
+        afterEdit.instances.filter((x) => x.name === 'renamed-a').length === 1
+
       // Leave the profile as it was found: a stale second instance would make
       // the next local run start from the wrong state.
       await evaluate(
@@ -898,13 +993,75 @@ async function main() {
         perInstance['ci-second'] === 'draft-on-B'
 
       const okInstances =
-        okChip && okMenu && okForm && added && after.count >= 2 && after.current === 1 && okDrafts
+        okChip && okMenu && okForm && added && after.count >= 2 && after.current === 1 && okDrafts && okEdit
       console.log(
         okInstances
           ? 'PASS instance chip names the active server, lists all of them, and adds a new one'
           : 'FAIL instance switching regressed'
       )
       if (!okInstances) process.exitCode = 1
+      return
+    }
+
+    if (SCENARIO === 'theme') {
+      const readTheme = () =>
+        evaluate(
+          cdp,
+          `(() => {
+            const root = document.documentElement
+            const toggle = document.getElementById('themeToggle')
+            const icons = Array.from(document.querySelectorAll('#themeToggle .theme-icon'))
+            const visible = icons.filter((node) => getComputedStyle(node).display !== 'none')
+            return {
+              theme: root.dataset.theme || '',
+              mode: root.dataset.themeMode || '',
+              toggleMode: toggle ? toggle.dataset.mode || '' : '',
+              icons: icons.length,
+              visible: visible.length,
+              label: toggle ? toggle.getAttribute('aria-label') || '' : '',
+              bg: getComputedStyle(document.querySelector('.body')).backgroundColor,
+              surface: getComputedStyle(document.querySelector('.memo-editor')).backgroundColor
+            }
+          })()`
+        )
+      const click = async () => {
+        await evaluate(cdp, `(() => { document.getElementById('themeToggle').click(); return true })()`)
+        await sleep(150)
+        return readTheme()
+      }
+
+      // Walk the cycle from a known point: light -> dark -> auto.
+      await evaluate(cdp, `(() => { window.setUiTheme('light'); return true })()`)
+      const light = await readTheme()
+      const dark = await click()
+      const auto = await click()
+      const stored = await evaluate(cdp, `new Promise((r) => chrome.storage.sync.get('uiTheme', r))`, {
+        awaitPromise: true
+      })
+      console.log('theme states:', JSON.stringify({ light, dark, auto, stored: stored.uiTheme }))
+
+      // The choice has to survive a reopen, and exactly one glyph per mode.
+      await evaluate(cdp, `(() => { location.reload(); return true })()`).catch(() => {})
+      const restored = await waitFor(cdp, `(() => document.documentElement.dataset.themeMode === 'auto')()`, 15000)
+
+      const okTheme =
+        light.theme === 'light' &&
+        dark.theme === 'dark' &&
+        auto.mode === 'auto' &&
+        (auto.theme === 'light' || auto.theme === 'dark') &&
+        light.bg !== dark.bg &&
+        light.surface !== dark.surface &&
+        Boolean(light.label) &&
+        [light, dark, auto].every((state) => state.icons === 3 && state.visible === 1) &&
+        [light, dark, auto].every((state) => state.toggleMode === state.mode) &&
+        stored.uiTheme === 'auto' &&
+        restored
+      console.log(
+        okTheme
+          ? 'PASS the theme toggle cycles light, dark and system, repaints, and survives a reopen'
+          : 'FAIL theme toggle regressed'
+      )
+      if (!okTheme) process.exitCode = 1
       return
     }
 

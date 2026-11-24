@@ -720,6 +720,7 @@ function renderInstanceAdmin(list, activeId, connected) {
     } else {
       row.appendChild(instanceActionButton('switch', msg('instanceSwitch'), false))
     }
+    row.appendChild(instanceActionButton('edit', msg('instanceEdit'), false))
     row.appendChild(instanceActionButton('delete', msg('instanceDelete'), true))
     host.appendChild(row)
   })
@@ -766,6 +767,9 @@ function renderInstanceSwitcher(info) {
   if (count) count.textContent = String(list.length)
 
   renderInstanceAdmin(list, activeId, connected)
+  // The hint names the instance being edited, so it has to follow a language
+  // switch as well.
+  renderFormTargetHint()
 }
 
 function setInstanceMenuOpen(open) {
@@ -801,18 +805,65 @@ function clearConnectionForm() {
   clearSettingsDraft()
 }
 
+function renderFormTargetHint() {
+  const hint = document.getElementById('instanceFormHint')
+  if (!hint) return
+  if (formTarget.mode === 'new') {
+    hint.textContent = msg('instanceFormNew')
+    hint.hidden = false
+    return
+  }
+  if (formTarget.mode === 'edit') {
+    const inst =
+      instanceState.instances.filter(function (candidate) {
+        return candidate.id === formTarget.id
+      })[0] || null
+    hint.textContent = msg('instanceFormEdit', [instanceLabel(inst)])
+    hint.hidden = false
+    return
+  }
+  hint.textContent = ''
+  hint.hidden = true
+}
+
 function startNewInstance() {
-  pendingNewInstance = true
+  formTarget = { mode: 'new', id: '' }
   setInstanceMenuOpen(false)
   clearConnectionForm()
+  renderFormTargetHint()
   $('#blog_info').show()
   const nameInput = document.getElementById('instanceNameInput')
   if (nameInput) nameInput.focus()
 }
 
-function openInstanceSettings() {
-  pendingNewInstance = false
+// Editing a non-active instance fills the same form. Saving then updates that
+// instance and leaves activeInstanceId alone, which is the point: fixing a typo
+// in another server's name must not move the popup onto that server.
+function editInstance(id) {
+  const inst =
+    instanceState.instances.filter(function (candidate) {
+      return candidate.id === id
+    })[0] || null
+  if (!inst) return
+  formTarget = { mode: 'edit', id: id }
   setInstanceMenuOpen(false)
+  $('#instanceNameInput').val(inst.name || defaultInstanceName(inst.apiUrl))
+  $('#apiUrl').val(inst.apiUrl || '')
+  $('#apiTokens').val(inst.apiTokens || '')
+  clearSettingsDraft()
+  renderFormTargetHint()
+  $('#blog_info').show()
+  const nameInput = document.getElementById('instanceNameInput')
+  if (nameInput) {
+    nameInput.focus()
+    if (nameInput.select) nameInput.select()
+  }
+}
+
+function openInstanceSettings() {
+  formTarget = { mode: 'current', id: '' }
+  setInstanceMenuOpen(false)
+  renderFormTargetHint()
   $('#blog_info').show()
   const section = document.getElementById('instanceSection')
   if (section && section.scrollIntoView) section.scrollIntoView({ block: 'nearest' })
@@ -833,8 +884,9 @@ function removeInstance(id) {
     if (!next.length) {
       // Nothing left: empty the form so the next save defines a new instance
       // instead of silently reviving the one that was just deleted.
-      pendingNewInstance = false
+      formTarget = { mode: 'current', id: '' }
       clearConnectionForm()
+      renderFormTargetHint()
       $('#blog_info').show()
       renderInstanceSwitcher({ instances: [], activeInstanceId: '', status: false })
       return
@@ -880,14 +932,20 @@ function initInstanceSwitcher() {
   const adminHost = document.getElementById('instanceAdminList')
   if (adminHost) {
     adminHost.addEventListener('click', function (event) {
-      const button = event.target.closest ? event.target.closest('[data-instance-act]') : null
-      if (!button) return
-      const row = button.closest('[data-instance-id]')
+      const row = event.target.closest ? event.target.closest('[data-instance-id]') : null
       if (!row) return
       const id = row.getAttribute('data-instance-id')
-      const action = button.getAttribute('data-instance-act')
-      if (action === 'switch') switchInstance(id)
-      else if (action === 'delete') removeInstance(id)
+      const button = event.target.closest('[data-instance-act]')
+      if (button) {
+        const action = button.getAttribute('data-instance-act')
+        if (action === 'switch') switchInstance(id)
+        else if (action === 'edit') editInstance(id)
+        else if (action === 'delete') removeInstance(id)
+        return
+      }
+      // The row itself switches: this list is a server picker first, while
+      // editing sits on its own button so a stray click cannot open a form.
+      switchInstance(id)
     })
   }
   const adminAdd = document.getElementById('instanceAdminAdd')
@@ -983,9 +1041,10 @@ const GLOBAL_DEFAULTS = {
 }
 
 let instanceState = { instances: [], activeId: '' }
-// Set by the "add instance" entry: the next save creates a new instance
-// instead of overwriting the active one.
-let pendingNewInstance = false
+// What the connection form edits right now. "new" adds an instance and moves
+// the popup to it; "edit" updates one instance and leaves the active one
+// alone; "current" is the plain "change my server" case.
+let formTarget = { mode: 'current', id: '' }
 
 function defaultInstanceName(apiUrl) {
   return window.MemosInstances.defaultName(apiUrl)
@@ -2019,8 +2078,9 @@ function saveSettingsPanel() {
 
   if (!apiUrl && !apiTokens) {
     // An empty form is "never mind", not "connect to nothing": drop the
-    // pending-new flag so the next real save does not create a stray instance.
-    pendingNewInstance = false
+    // pending target so the next real save does not create a stray instance.
+    formTarget = { mode: 'current', id: '' }
+    renderFormTargetHint()
     chrome.storage.sync.set(customSettings, function () {
       clearSettingsDraft()
       $.message({ message: msg('saveSuccess') })
@@ -2060,11 +2120,17 @@ function saveSettingsPanel() {
       apiBase: result.base || '',
       disallowPublic: result.disallowPublic === true ? '1' : result.disallowPublic === false ? '0' : ''
     }
-    // Editing the active instance keeps it active; a save started from "add
-    // instance" creates a new one and switches to it.
-    const targetId = pendingNewInstance ? null : instanceState.activeId || null
+    // "new" creates an instance and moves to it; "edit" updates one instance
+    // and keeps the current one; "current" rewrites the active instance.
+    const targetId =
+      formTarget.mode === 'new'
+        ? null
+        : formTarget.mode === 'edit'
+          ? formTarget.id
+          : instanceState.activeId || null
     upsertInstance(targetId, fields, function () {
-      pendingNewInstance = false
+      formTarget = { mode: 'current', id: '' }
+      renderFormTargetHint()
       chrome.storage.sync.set(customSettings, function () {
         clearSettingsDraft()
         // Naming the version turns "saved" into "saved, and this is what it

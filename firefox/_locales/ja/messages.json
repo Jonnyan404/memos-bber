@@ -301,5 +301,23 @@
   },
   "instanceNamePlaceholder": {
     "message": "名前（例：自宅）"
+  },
+  "instanceEdit": {
+    "message": "編集"
+  },
+  "instanceFormNew": {
+    "message": "保存するとインスタンスを追加して切り替えます。"
+  },
+  "instanceFormEdit": {
+    "message": "「$1」を編集中です。保存しても現在のインスタンスは変わりません。"
+  },
+  "themeAuto": {
+    "message": "テーマ：システム"
+  },
+  "themeLight": {
+    "message": "テーマ：ライト"
+  },
+  "themeDark": {
+    "message": "テーマ：ダーク"
   }
 }

@@ -301,5 +301,23 @@
   },
   "instanceNamePlaceholder": {
     "message": "Name, e.g. Home"
+  },
+  "instanceEdit": {
+    "message": "Edit"
+  },
+  "instanceFormNew": {
+    "message": "Saving adds an instance and switches to it."
+  },
+  "instanceFormEdit": {
+    "message": "Editing $1. Saving leaves the current instance unchanged."
+  },
+  "themeAuto": {
+    "message": "Theme: follow system"
+  },
+  "themeLight": {
+    "message": "Theme: light"
+  },
+  "themeDark": {
+    "message": "Theme: dark"
   }
 }

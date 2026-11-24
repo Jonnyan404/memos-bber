@@ -301,5 +301,23 @@
   },
   "instanceNamePlaceholder": {
     "message": "Nom, ex. Maison"
+  },
+  "instanceEdit": {
+    "message": "Modifier"
+  },
+  "instanceFormNew": {
+    "message": "L'enregistrement ajoute une instance et bascule dessus."
+  },
+  "instanceFormEdit": {
+    "message": "Modification de « $1 ». L'enregistrement ne change pas l'instance active."
+  },
+  "themeAuto": {
+    "message": "Thème : système"
+  },
+  "themeLight": {
+    "message": "Thème : clair"
+  },
+  "themeDark": {
+    "message": "Thème : sombre"
   }
 }

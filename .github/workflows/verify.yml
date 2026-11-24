@@ -166,6 +166,8 @@ jobs:
             extra: '--scenario instances'
           - label: migrate
             extra: '--scenario migrate'
+          - label: theme
+            extra: '--scenario theme'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
