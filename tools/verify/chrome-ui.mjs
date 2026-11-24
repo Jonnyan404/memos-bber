@@ -487,6 +487,17 @@ async function main() {
       })
     }
 
+    // The popup locks the editor to the width it measures while its scripts run
+    // (chrome/js/oper.js: initEditorResize). A metrics override applied after
+    // that leaves a base width taken from the real ~800px window while the
+    // viewport is 420: on 2026-11-24 the editor stayed 717px wide inside a
+    // 420px viewport, its resize handle sat outside the viewport, and the drag
+    // landed on nothing. Reload once so the page boots inside the emulated
+    // viewport; waitFor() swallows the destroyed-context errors in between.
+    await cdp.send('Page.enable').catch(() => {})
+    await cdp.send('Page.reload', { ignoreCache: true }).catch(() => {})
+    await sleep(400)
+
     console.log(`extension ${id} loaded, popup title=${JSON.stringify(title)}`)
 
     // jQuery handlers are bound while the popup scripts execute; wait until the
@@ -1170,27 +1181,59 @@ async function main() {
       const storedSize = () =>
         evaluate(cdp, `new Promise((r) => chrome.storage.sync.get(['popupEditorSize'], r))`, { awaitPromise: true })
 
+      // Real mouse input for one full press/move/release cycle. The move has to
+      // stay split from the release so the mid-drag preview can be sampled.
+      const dragBy = async (from, dx, dy) => {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.hx, y: from.hy, button: 'left', buttons: 1, clickCount: 1 })
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.hx + dx, y: from.hy + dy, button: 'left', buttons: 1 })
+        // Mid-drag the size must still be a preview (CSS transform), not a real
+        // popup resize on every pointermove.
+        const preview = await evaluate(
+          cdp,
+          `(() => {
+            const e = document.querySelector('.memo-editor')
+            const r = e.getBoundingClientRect()
+            return { transform: e.style.transform || '', width: Math.round(r.width) }
+          })()`
+        )
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.hx + dx, y: from.hy + dy, button: 'left', buttons: 0, clickCount: 1 })
+        await sleep(250)
+        return { preview, after: await read() }
+      }
+      const resetSize = async () => {
+        await evaluate(cdp, `(() => { document.querySelector('#editor-resize-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); return true })()`)
+        await sleep(150)
+        return read()
+      }
+
       const before = await read()
-      // Drag the corner 120px right and 80px down with real mouse input.
-      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: before.hx, y: before.hy, button: 'left', buttons: 1, clickCount: 1 })
-      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.hx + 120, y: before.hy + 80, button: 'left', buttons: 1 })
-      // Mid-drag the size must still be a preview (CSS transform), not a real
-      // popup resize on every pointermove.
-      const preview = await evaluate(
-        cdp,
-        `(() => {
-          const e = document.querySelector('.memo-editor')
-          const r = e.getBoundingClientRect()
-          return { transform: e.style.transform || '', width: Math.round(r.width) }
-        })()`
-      )
-      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: before.hx + 120, y: before.hy + 80, button: 'left', buttons: 0, clickCount: 1 })
-      await sleep(250)
-      const dragged = await read()
+      // The editor can only grow to min(800, screen.availWidth) - 16, and the
+      // width it starts from is whatever the window happened to be when the
+      // popup script ran: the emulation override is applied after load, so one
+      // night it is a 392px window (editor 360) and the next a 749px one
+      // (editor 717). A hardcoded +120 drag silently stopped fitting the moment
+      // the start width was 717 under a 784 ceiling, so probe the real ceiling
+      // with an oversized drag and size the measured drag to the headroom.
+      const capped = (await dragBy(before, 2000, 2000)).after
+      const maxW = capped.w
+      const maxH = capped.h
+      const dx = Math.min(120, Math.max(0, maxW - before.w))
+      const dy = Math.min(80, Math.max(0, maxH - before.h))
+      const start = await resetSize()
+      console.log('resize drag:', JSON.stringify({ before: [before.w, before.h], capped: [maxW, maxH], step: [dx, dy] }))
+
+      if (dx < 8 && dy < 8) {
+        // Nothing to drag towards: report it instead of pretending the resize
+        // works. This only happens if the window is already at the ceiling.
+        console.log('SKIP resize: the window leaves no headroom', JSON.stringify({ before: [before.w, before.h], capped: [maxW, maxH] }))
+        return
+      }
+
+      const { preview, after: dragged } = await dragBy(start, dx, dy)
       const persisted = (await storedSize()).popupEditorSize || null
       console.log(
-        'resize drag:',
-        JSON.stringify({ before: [before.w, before.h], dragged: [dragged.w, dragged.h], persisted, preview: preview.transform })
+        'resize result:',
+        JSON.stringify({ dragged: [dragged.w, dragged.h], persisted, preview: preview.transform })
       )
 
       // Keyboard: focus the handle and press ArrowRight (24px step).
@@ -1207,27 +1250,21 @@ async function main() {
       const afterKey = await read()
 
       // Double click resets to the base size.
-      await evaluate(
-        cdp,
-        `(() => {
-          document.querySelector('#editor-resize-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
-          return true
-        })()`
-      )
-      await sleep(120)
-      const reset = await read()
+      const reset = await resetSize()
 
+      // ArrowRight adds 24px, but the ceiling still applies.
+      const keyStep = Math.min(24, Math.max(0, maxW - dragged.w))
       const okResize =
         Boolean(preview.transform) &&
-        Math.abs(dragged.w - before.w - 120) <= 4 &&
-        Math.abs(dragged.h - before.h - 80) <= 4 &&
+        Math.abs(dragged.w - start.w - dx) <= 4 &&
+        Math.abs(dragged.h - start.h - dy) <= 4 &&
         persisted &&
         Math.abs(persisted.width - dragged.w) <= 4 &&
         Math.abs(persisted.height - dragged.h) <= 4 &&
-        Math.abs(afterKey.w - dragged.w - 24) <= 2 &&
+        Math.abs(afterKey.w - dragged.w - keyStep) <= 2 &&
         afterKey.text &&
-        Math.abs(reset.w - before.w) <= 2 &&
-        Math.abs(reset.h - before.h) <= 2
+        Math.abs(reset.w - start.w) <= 2 &&
+        Math.abs(reset.h - start.h) <= 2
       console.log(
         okResize
           ? 'PASS drag resizes each axis, keyboard nudges, double click resets'

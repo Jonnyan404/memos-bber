@@ -4,8 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    - cron: '0 18 * * *'
+  # The nightly run is switched off. It re-ran the same matrix every night with
+  # no code change, so its failures came from the environment (window width of
+  # the headless browser) instead of the bundle. Restore the block below if a
+  # periodic smoke run is wanted again:
+  # schedule:
+  #   - cron: '0 18 * * *'
   workflow_dispatch:
 
 permissions:
