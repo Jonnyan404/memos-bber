@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "memos $1 に接続しました"
+  },
+  "settingsInstancesTitle": {
+    "message": "インスタンス"
+  },
+  "instanceMenuTitle": {
+    "message": "インスタンスを切り替え"
+  },
+  "instanceAdd": {
+    "message": "+ インスタンスを追加"
+  },
+  "instanceManage": {
+    "message": "インスタンスを管理"
+  },
+  "instanceCurrent": {
+    "message": "使用中"
+  },
+  "instanceSwitch": {
+    "message": "切り替え"
+  },
+  "instanceDelete": {
+    "message": "削除"
+  },
+  "instanceEmpty": {
+    "message": "インスタンスがありません"
+  },
+  "instanceDeleteConfirm": {
+    "message": "「$1」を削除しますか？"
+  },
+  "instanceDeleteLast": {
+    "message": "最後のインスタンスです。削除すると接続設定が消去されます。"
+  },
+  "instanceDeleted": {
+    "message": "$1 を削除しました"
+  },
+  "instanceNamePlaceholder": {
+    "message": "名前（例：自宅）"
   }
 }

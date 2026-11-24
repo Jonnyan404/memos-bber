@@ -122,6 +122,12 @@ function applyStaticI18n() {
 	setText('saveTag', 'saveBtn')
 
 	setText('supportedMemosVersion', 'supportedMemosVersion')
+	setText('settingsInstancesTitle', 'settingsInstancesTitle')
+	setText('instanceMenuTitle', 'instanceMenuTitle')
+	setText('instanceAdd', 'instanceAdd')
+	setText('instanceManage', 'instanceManage')
+	setText('instanceAdminAdd', 'instanceAdd')
+	setPlaceholder('instanceNameInput', 'instanceNamePlaceholder')
 	setText('settingsConnectionTitle', 'settingsConnectionTitle')
 	setText('settingsConnectionDesc', 'settingsConnectionDesc')
 	setText('settingsPostingTitle', 'settingsPostingTitle')

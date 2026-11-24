@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "Verbunden mit memos $1"
+  },
+  "settingsInstancesTitle": {
+    "message": "Instanzen"
+  },
+  "instanceMenuTitle": {
+    "message": "Instanz wechseln"
+  },
+  "instanceAdd": {
+    "message": "+ Instanz hinzufügen"
+  },
+  "instanceManage": {
+    "message": "Instanzen verwalten"
+  },
+  "instanceCurrent": {
+    "message": "Aktiv"
+  },
+  "instanceSwitch": {
+    "message": "Wechseln"
+  },
+  "instanceDelete": {
+    "message": "Löschen"
+  },
+  "instanceEmpty": {
+    "message": "Noch keine Instanz"
+  },
+  "instanceDeleteConfirm": {
+    "message": "„$1“ löschen?"
+  },
+  "instanceDeleteLast": {
+    "message": "Das ist die letzte Instanz. Beim Löschen wird die Verbindung entfernt."
+  },
+  "instanceDeleted": {
+    "message": "$1 gelöscht"
+  },
+  "instanceNamePlaceholder": {
+    "message": "Name, z. B. Zuhause"
   }
 }

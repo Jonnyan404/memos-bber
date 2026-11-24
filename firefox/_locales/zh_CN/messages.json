@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "已连接 memos $1"
+  },
+  "settingsInstancesTitle": {
+    "message": "实例"
+  },
+  "instanceMenuTitle": {
+    "message": "切换实例"
+  },
+  "instanceAdd": {
+    "message": "+ 添加实例"
+  },
+  "instanceManage": {
+    "message": "管理实例"
+  },
+  "instanceCurrent": {
+    "message": "当前"
+  },
+  "instanceSwitch": {
+    "message": "切换"
+  },
+  "instanceDelete": {
+    "message": "删除"
+  },
+  "instanceEmpty": {
+    "message": "还没有实例"
+  },
+  "instanceDeleteConfirm": {
+    "message": "删除「$1」？"
+  },
+  "instanceDeleteLast": {
+    "message": "这是最后一个实例，删除后会清空连接配置。"
+  },
+  "instanceDeleted": {
+    "message": "已删除 $1"
+  },
+  "instanceNamePlaceholder": {
+    "message": "实例名称，例如：个人"
   }
 }

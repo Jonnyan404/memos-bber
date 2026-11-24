@@ -245,6 +245,52 @@ for (const bundle of BUNDLES) {
   )
   check(bundle, 'saved connection names the server version', oper.includes("msg('saveConnected', [result.version])"))
 
+  // Multiple instances: the chip and the settings list are shells in the HTML,
+  // every row is built from storage by oper.js. The migration has to stay in
+  // place, or an upgraded install looks like it lost its connection.
+  check(
+    bundle,
+    'instance switcher markup is present',
+    ['instanceToggle', 'instanceMenu', 'instanceList', 'instanceAdminList', 'instanceNameInput'].every((id) =>
+      new RegExp(`id="${id}"`).test(html)
+    )
+  )
+  check(
+    bundle,
+    'instances stored as a list, not flat keys',
+    oper.includes("const INSTANCES_KEY = 'memosInstances'") &&
+      oper.includes("const ACTIVE_INSTANCE_KEY = 'activeInstanceId'") &&
+      oper.includes('function loadInstanceState') &&
+      oper.includes('function patchActiveInstance')
+  )
+  check(
+    bundle,
+    'one-time migration adopts the old connection',
+    oper.includes('function pickInstanceKeys') &&
+      oper.includes('function defaultInstanceName') &&
+      /writeInstances\(\[migrated\], migrated\.id/.test(oper)
+  )
+  check(
+    bundle,
+    'instance drafts stay per instance',
+    oper.includes('patchActiveInstance({ open_action') &&
+      oper.includes('patchActiveInstance({ resourceIdList: pendingAttachments') &&
+      !/chrome\.storage\.sync\.set\(\{\s*open_content/.test(oper)
+  )
+  check(
+    bundle,
+    'context menu writes the active instance',
+    bg.includes('function appendToActiveDraft') && bg.includes('memosInstances')
+  )
+  check(
+    bundle,
+    'instance rows are built as DOM',
+    oper.includes('name.textContent = instanceLabel(inst)') &&
+      oper.includes("setAttribute('data-instance-id'") &&
+      css.includes('.instance-toggle') &&
+      css.includes('.instance-admin-row')
+  )
+
   // every locale must carry the new error strings (English fallback is fine,
   // but a missing key would silently show the raw key name)
   for (const locale of ['en', 'zh_CN', 'de', 'es', 'fr', 'ja', 'ko']) {
@@ -263,7 +309,19 @@ for (const bundle of BUNDLES) {
         'kofiTip',
         'githubTip',
         'extensionVersionLabel',
-        'saveConnected'
+        'saveConnected',
+        'settingsInstancesTitle',
+        'instanceMenuTitle',
+        'instanceAdd',
+        'instanceManage',
+        'instanceCurrent',
+        'instanceSwitch',
+        'instanceDelete',
+        'instanceEmpty',
+        'instanceDeleteConfirm',
+        'instanceDeleteLast',
+        'instanceDeleted',
+        'instanceNamePlaceholder'
       ]
       const absent = required.filter((key) => !data[key])
       check(bundle, `${locale} messages`, absent.length === 0, absent.join(','))

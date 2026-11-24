@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "Conectado a memos $1"
+  },
+  "settingsInstancesTitle": {
+    "message": "Instancias"
+  },
+  "instanceMenuTitle": {
+    "message": "Cambiar de instancia"
+  },
+  "instanceAdd": {
+    "message": "+ Añadir instancia"
+  },
+  "instanceManage": {
+    "message": "Gestionar instancias"
+  },
+  "instanceCurrent": {
+    "message": "Actual"
+  },
+  "instanceSwitch": {
+    "message": "Cambiar"
+  },
+  "instanceDelete": {
+    "message": "Eliminar"
+  },
+  "instanceEmpty": {
+    "message": "Aún no hay instancias"
+  },
+  "instanceDeleteConfirm": {
+    "message": "¿Eliminar «$1»?"
+  },
+  "instanceDeleteLast": {
+    "message": "Es la última instancia. Al eliminarla se borra la conexión."
+  },
+  "instanceDeleted": {
+    "message": "$1 eliminada"
+  },
+  "instanceNamePlaceholder": {
+    "message": "Nombre, p. ej. Casa"
   }
 }

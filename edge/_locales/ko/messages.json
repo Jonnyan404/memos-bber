@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "memos $1 에 연결됨"
+  },
+  "settingsInstancesTitle": {
+    "message": "인스턴스"
+  },
+  "instanceMenuTitle": {
+    "message": "인스턴스 전환"
+  },
+  "instanceAdd": {
+    "message": "+ 인스턴스 추가"
+  },
+  "instanceManage": {
+    "message": "인스턴스 관리"
+  },
+  "instanceCurrent": {
+    "message": "현재"
+  },
+  "instanceSwitch": {
+    "message": "전환"
+  },
+  "instanceDelete": {
+    "message": "삭제"
+  },
+  "instanceEmpty": {
+    "message": "인스턴스 없음"
+  },
+  "instanceDeleteConfirm": {
+    "message": "\"$1\"을(를) 삭제할까요?"
+  },
+  "instanceDeleteLast": {
+    "message": "마지막 인스턴스입니다. 삭제하면 연결 설정이 지워집니다."
+  },
+  "instanceDeleted": {
+    "message": "$1 삭제됨"
+  },
+  "instanceNamePlaceholder": {
+    "message": "이름, 예: 집"
   }
 }

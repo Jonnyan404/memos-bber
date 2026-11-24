@@ -162,6 +162,8 @@ jobs:
             extra: '--scenario header-links'
           - label: settings
             extra: '--scenario settings'
+          - label: instances
+            extra: '--scenario instances'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

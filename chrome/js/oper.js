@@ -589,7 +589,9 @@ function refreshVisibilityPolicy(info) {
   adapter.visibilityPolicy(function (policy) {
     const value = policy && typeof policy.disallowPublic === 'boolean' ? policy.disallowPublic : null
     applyVisibilityPolicy(value)
-    chrome.storage.sync.set({
+    // The policy belongs to the server the token was saved for, so it is part
+    // of the instance rather than a global preference.
+    patchActiveInstance({
       disallowPublic: value === true ? '1' : value === false ? '0' : ''
     })
   }, function () {})
@@ -617,6 +619,295 @@ function initHeaderLinks() {
 }
 
 initHeaderLinks()
+
+// ---- Instance switcher --------------------------------------------------
+// The chip is the whole point of the feature: one click changes server without
+// opening the settings panel. It stays 24px tall and ellipsises the name,
+// because the header already carries the title, the gear, the language toggle
+// and two links inside 360px.
+
+function instanceDot(status) {
+  const dot = document.createElement('span')
+  dot.className = 'instance-dot' + (status === true ? ' online' : status === false ? ' offline' : '')
+  dot.setAttribute('aria-hidden', 'true')
+  return dot
+}
+
+function instanceLabel(inst) {
+  return (inst && (inst.name || defaultInstanceName(inst.apiUrl))) || ''
+}
+
+function instanceHostLine(inst) {
+  const host = instanceHost(inst && inst.apiUrl)
+  const version = inst && inst.apiVersion ? String(inst.apiVersion) : ''
+  return [host, version].filter(Boolean).join(' · ')
+}
+
+function instanceMenuRow(inst, isActive, connected) {
+  const row = document.createElement('button')
+  row.type = 'button'
+  row.className = 'instance-item' + (isActive ? ' active' : '')
+  row.setAttribute('role', 'menuitemradio')
+  row.setAttribute('aria-checked', isActive ? 'true' : 'false')
+  row.setAttribute('data-instance-id', inst.id)
+  row.appendChild(instanceDot(isActive ? connected : null))
+
+  const body = document.createElement('span')
+  body.className = 'instance-item-body'
+  const name = document.createElement('span')
+  name.className = 'instance-item-name'
+  name.textContent = instanceLabel(inst)
+  const host = document.createElement('span')
+  host.className = 'instance-item-host'
+  host.textContent = instanceHostLine(inst)
+  body.appendChild(name)
+  body.appendChild(host)
+  row.appendChild(body)
+
+  if (isActive) {
+    const mark = document.createElement('span')
+    mark.className = 'instance-item-mark'
+    mark.textContent = msg('instanceCurrent')
+    row.appendChild(mark)
+  }
+  return row
+}
+
+function instanceActionButton(action, label, danger) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'instance-admin-btn' + (danger ? ' danger' : '')
+  button.setAttribute('data-instance-act', action)
+  button.textContent = label
+  return button
+}
+
+function renderInstanceAdmin(list, activeId, connected) {
+  const host = document.getElementById('instanceAdminList')
+  if (!host) return
+  host.textContent = ''
+  if (!list.length) {
+    const empty = document.createElement('div')
+    empty.className = 'instance-empty'
+    empty.textContent = msg('instanceEmpty')
+    host.appendChild(empty)
+    return
+  }
+  list.forEach(function (inst) {
+    const isActive = inst.id === activeId
+    const row = document.createElement('div')
+    row.className = 'instance-admin-row' + (isActive ? ' active' : '')
+    row.setAttribute('data-instance-id', inst.id)
+    row.appendChild(instanceDot(isActive ? connected : null))
+
+    const body = document.createElement('div')
+    body.className = 'instance-admin-body'
+    const name = document.createElement('div')
+    name.className = 'instance-admin-name'
+    name.textContent = instanceLabel(inst)
+    const hostName = document.createElement('div')
+    hostName.className = 'instance-admin-host'
+    hostName.textContent = instanceHost(inst.apiUrl) || '-'
+    body.appendChild(name)
+    body.appendChild(hostName)
+    row.appendChild(body)
+
+    if (isActive) {
+      const badge = document.createElement('span')
+      badge.className = 'instance-admin-badge'
+      badge.textContent = msg('instanceCurrent')
+      row.appendChild(badge)
+    } else {
+      row.appendChild(instanceActionButton('switch', msg('instanceSwitch'), false))
+    }
+    row.appendChild(instanceActionButton('delete', msg('instanceDelete'), true))
+    host.appendChild(row)
+  })
+}
+
+// Names come from the user, so every row is built with textContent; nothing
+// here can inject markup into the popup.
+function renderInstanceSwitcher(info) {
+  const list = Array.isArray(info.instances) ? info.instances : []
+  const activeId = info.activeInstanceId || ''
+  const connected = Boolean(info.status)
+  instanceState = { instances: list, activeId: activeId }
+
+  const toggle = document.getElementById('instanceToggle')
+  const nameEl = document.getElementById('instanceName')
+  const dotEl = document.getElementById('instanceDot')
+  if (!toggle || !nameEl) return
+
+  const active =
+    list.filter(function (inst) {
+      return inst.id === activeId
+    })[0] || null
+  nameEl.textContent = active ? instanceLabel(active) : msg('instanceEmpty')
+  nameEl.setAttribute('title', active ? instanceHost(active.apiUrl) : '')
+  toggle.setAttribute('aria-label', msg('instanceMenuTitle'))
+  if (dotEl) {
+    dotEl.className = 'instance-dot' + (active ? (connected ? ' online' : ' offline') : '')
+  }
+
+  const menuList = document.getElementById('instanceList')
+  if (menuList) {
+    menuList.textContent = ''
+    list.forEach(function (inst) {
+      menuList.appendChild(instanceMenuRow(inst, inst.id === activeId, connected))
+    })
+    if (!list.length) {
+      const empty = document.createElement('div')
+      empty.className = 'instance-empty'
+      empty.textContent = msg('instanceEmpty')
+      menuList.appendChild(empty)
+    }
+  }
+  const count = document.getElementById('instanceMenuCount')
+  if (count) count.textContent = String(list.length)
+
+  renderInstanceAdmin(list, activeId, connected)
+}
+
+function setInstanceMenuOpen(open) {
+  const toggle = document.getElementById('instanceToggle')
+  const menu = document.getElementById('instanceMenu')
+  if (!toggle || !menu) return
+  toggle.setAttribute('aria-expanded', open ? 'true' : 'false')
+  menu.classList.toggle('hidden', !open)
+}
+
+// Switching reloads the popup: the draft, the pending attachments, the tag
+// filter and the two version labels are all keyed by instance, and resetting
+// each of them by hand is how one of them ends up showing the wrong server.
+function switchInstance(id) {
+  if (!id || id === instanceState.activeId) {
+    setInstanceMenuOpen(false)
+    return
+  }
+  // Park what is in the editor on the instance being left first, so
+  // "write, switch, switch back" keeps the text on the right server.
+  patchActiveInstance({ open_action: 'save_text', open_content: $("textarea[name=text]").val() || '' }, function () {
+    chrome.storage.sync.set({ [ACTIVE_INSTANCE_KEY]: id }, function () {
+      setInstanceMenuOpen(false)
+      location.reload()
+    })
+  })
+}
+
+function clearConnectionForm() {
+  $('#instanceNameInput').val('')
+  $('#apiUrl').val('')
+  $('#apiTokens').val('')
+  clearSettingsDraft()
+}
+
+function startNewInstance() {
+  pendingNewInstance = true
+  setInstanceMenuOpen(false)
+  clearConnectionForm()
+  $('#blog_info').show()
+  const nameInput = document.getElementById('instanceNameInput')
+  if (nameInput) nameInput.focus()
+}
+
+function openInstanceSettings() {
+  pendingNewInstance = false
+  setInstanceMenuOpen(false)
+  $('#blog_info').show()
+  const section = document.getElementById('instanceSection')
+  if (section && section.scrollIntoView) section.scrollIntoView({ block: 'nearest' })
+}
+
+function removeInstance(id) {
+  const inst =
+    instanceState.instances.filter(function (candidate) {
+      return candidate.id === id
+    })[0] || null
+  if (!inst) return
+  const label = instanceLabel(inst)
+  const last = instanceState.instances.length <= 1
+  const question = last ? msg('instanceDeleteLast') : msg('instanceDeleteConfirm', [label])
+  if (!window.confirm(question)) return
+  deleteInstance(id, function (next, activeId) {
+    $.message({ message: msg('instanceDeleted', [label]) })
+    if (!next.length) {
+      // Nothing left: empty the form so the next save defines a new instance
+      // instead of silently reviving the one that was just deleted.
+      pendingNewInstance = false
+      clearConnectionForm()
+      $('#blog_info').show()
+      renderInstanceSwitcher({ instances: [], activeInstanceId: '', status: false })
+      return
+    }
+    if (activeId !== instanceState.activeId) {
+      location.reload()
+      return
+    }
+    get_info(function (info) {
+      renderInstanceSwitcher(info)
+    })
+  })
+}
+
+function initInstanceSwitcher() {
+  const toggle = document.getElementById('instanceToggle')
+  const menu = document.getElementById('instanceMenu')
+  const switcher = document.getElementById('instance_switcher')
+  if (!toggle || !menu) return
+
+  toggle.addEventListener('click', function (event) {
+    event.stopPropagation()
+    setInstanceMenuOpen(toggle.getAttribute('aria-expanded') !== 'true')
+  })
+
+  menu.addEventListener('click', function (event) {
+    const item = event.target.closest ? event.target.closest('[data-instance-id]') : null
+    if (!item) return
+    event.stopPropagation()
+    switchInstance(item.getAttribute('data-instance-id'))
+  })
+
+  const add = document.getElementById('instanceAdd')
+  if (add) {
+    add.addEventListener('click', function (event) {
+      event.stopPropagation()
+      startNewInstance()
+    })
+  }
+  const manage = document.getElementById('instanceManage')
+  if (manage) manage.addEventListener('click', openInstanceSettings)
+
+  const adminHost = document.getElementById('instanceAdminList')
+  if (adminHost) {
+    adminHost.addEventListener('click', function (event) {
+      const button = event.target.closest ? event.target.closest('[data-instance-act]') : null
+      if (!button) return
+      const row = button.closest('[data-instance-id]')
+      if (!row) return
+      const id = row.getAttribute('data-instance-id')
+      const action = button.getAttribute('data-instance-act')
+      if (action === 'switch') switchInstance(id)
+      else if (action === 'delete') removeInstance(id)
+    })
+  }
+  const adminAdd = document.getElementById('instanceAdminAdd')
+  if (adminAdd) adminAdd.addEventListener('click', startNewInstance)
+
+  document.addEventListener('click', function (event) {
+    if (!switcher || switcher.contains(event.target)) return
+    setInstanceMenuOpen(false)
+  })
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') setInstanceMenuOpen(false)
+  })
+  window.addEventListener('i18n:changed', function () {
+    get_info(function (info) {
+      renderInstanceSwitcher(info)
+    })
+  })
+}
+
+initInstanceSwitcher()
 
 function updateLockNowText(lockType) {
   if (lockType === 'PUBLIC') {
@@ -675,55 +966,212 @@ function resolveSendContent(rawContent, resources, customText) {
   return getAttachmentOnlyDefaultText(customText)
 }
 
-function get_info(callback) {
-  chrome.storage.sync.get(
-    {
-      apiUrl: '',
-      apiTokens: '',
-      apiFlavor: '',
-      apiVersion: '',
-      apiBase: '',
-      userRef: '',
-      disallowPublic: '',
-      hidetag: '',
-      showtag: '',
-      memo_lock: '',
-      open_action: '',
-      open_content: '',
-      userid: '',
-      memoUiPath: 'memos',
-      resourceIdList: [],
-      attachmentOnlyDefaultText: ''
-    },
-    function (items) {
-      var flag = false
-      var returnObject = {}
-      if (items.apiUrl === '' || items.apiTokens === '') {
-        flag = false
-      } else {
-        flag = true
-      }
-      returnObject.status = flag
-      returnObject.apiUrl = items.apiUrl
-      returnObject.apiTokens = items.apiTokens
-      returnObject.apiFlavor = items.apiFlavor
-      returnObject.apiVersion = items.apiVersion
-      returnObject.apiBase = items.apiBase
-      returnObject.userRef = items.userRef
-      returnObject.disallowPublic = items.disallowPublic
-      returnObject.hidetag = items.hidetag
-      returnObject.showtag = items.showtag
-      returnObject.memo_lock = items.memo_lock
-      returnObject.open_content = items.open_content
-      returnObject.open_action = items.open_action
-      returnObject.userid = items.userid
-      returnObject.memoUiPath = items.memoUiPath
-      returnObject.resourceIdList = items.resourceIdList
-      returnObject.attachmentOnlyDefaultText = items.attachmentOnlyDefaultText
+// ---- Multiple Memos instances -------------------------------------------
+// One flat apiUrl/apiTokens pair cannot describe "home + work + a test box".
+// Instances live in a list, and every per-instance key keeps the name it had
+// as a top-level setting (open_content, resourceIdList, hidetag ...), so
+// get_info() can flatten the active one into the object the rest of this file
+// already expects. That is what leaves js/compat/memosApi.js untouched.
+const INSTANCES_KEY = 'memosInstances'
+const ACTIVE_INSTANCE_KEY = 'activeInstanceId'
+const INSTANCE_KEYS = [
+  'apiUrl', 'apiTokens', 'apiFlavor', 'apiVersion', 'apiBase', 'userRef',
+  'memoUiPath', 'disallowPublic', 'userid',
+  'open_action', 'open_content', 'resourceIdList', 'hidetag', 'showtag'
+]
+// Read on every get_info(): global preferences, plus the legacy top-level
+// per-instance keys, which are only consumed by the one-time migration.
+const INFO_DEFAULTS = {
+  memo_lock: '',
+  memoUiPath: 'memos',
+  attachmentOnlyDefaultText: '',
+  apiUrl: '',
+  apiTokens: '',
+  apiFlavor: '',
+  apiVersion: '',
+  apiBase: '',
+  userRef: '',
+  disallowPublic: '',
+  userid: '',
+  open_action: '',
+  open_content: '',
+  resourceIdList: [],
+  hidetag: '',
+  showtag: ''
+}
+// get_info() reads only these: the legacy keys above must NOT leak back into
+// the form once the list exists, or deleting the last instance would leave the
+// old server sitting in the connection fields.
+const GLOBAL_DEFAULTS = {
+  memo_lock: '',
+  memoUiPath: 'memos',
+  attachmentOnlyDefaultText: ''
+}
 
-      if (callback) callback(returnObject)
+let instanceState = { instances: [], activeId: '' }
+// Set by the "add instance" entry: the next save creates a new instance
+// instead of overwriting the active one.
+let pendingNewInstance = false
+
+function newInstanceId() {
+  return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
+}
+
+// "https://memos.example.com/" becomes "example": short enough for the 24px
+// chip, while the menu still shows the full host underneath.
+function defaultInstanceName(apiUrl) {
+  const raw = String(apiUrl || '')
+  try {
+    const host = new URL(raw).hostname
+    const bare = host.replace(/^(www|memos)\./, '')
+    return bare.split('.')[0] || host || 'memos'
+  } catch (_) {
+    const stripped = raw.replace(/^https?:\/\//, '').replace(/[/:?#].*$/, '')
+    return stripped || 'memos'
+  }
+}
+
+function instanceHost(apiUrl) {
+  try {
+    return new URL(String(apiUrl)).host
+  } catch (_) {
+    return String(apiUrl || '')
+  }
+}
+
+function pickInstanceKeys(source) {
+  const out = {}
+  INSTANCE_KEYS.forEach(function (key) {
+    if (source && source[key] !== undefined) out[key] = source[key]
+  })
+  return out
+}
+
+function writeInstances(instances, activeId, callback) {
+  chrome.storage.sync.set(
+    { [INSTANCES_KEY]: instances, [ACTIVE_INSTANCE_KEY]: activeId || '' },
+    function () {
+      if (callback) callback()
     }
   )
+}
+
+// Reads the list, building it from the old flat keys the first time an
+// upgraded install opens the popup. The legacy keys stay in place so that a
+// downgrade to an older build still finds its connection.
+function loadInstanceState(callback) {
+  chrome.storage.sync.get(
+    Object.assign({ [INSTANCES_KEY]: null, [ACTIVE_INSTANCE_KEY]: '' }, INFO_DEFAULTS),
+    function (items) {
+      const list = Array.isArray(items[INSTANCES_KEY])
+        ? items[INSTANCES_KEY].filter(function (inst) {
+            return inst && inst.id
+          })
+        : []
+      if (list.length) {
+        const known = list.some(function (inst) {
+          return inst.id === items[ACTIVE_INSTANCE_KEY]
+        })
+        const activeId = known ? items[ACTIVE_INSTANCE_KEY] : list[0].id
+        if (activeId !== items[ACTIVE_INSTANCE_KEY]) {
+          chrome.storage.sync.set({ [ACTIVE_INSTANCE_KEY]: activeId })
+        }
+        callback({ instances: list, activeId: activeId })
+        return
+      }
+      if (!items.apiUrl && !items.apiTokens) {
+        callback({ instances: [], activeId: '' })
+        return
+      }
+      const migrated = Object.assign(
+        { id: newInstanceId(), name: defaultInstanceName(items.apiUrl) },
+        pickInstanceKeys(items)
+      )
+      writeInstances([migrated], migrated.id, function () {
+        callback({ instances: [migrated], activeId: migrated.id })
+      })
+    }
+  )
+}
+
+function findActiveInstance(state) {
+  if (!state || !Array.isArray(state.instances)) return null
+  return (
+    state.instances.filter(function (inst) {
+      return inst.id === state.activeId
+    })[0] || null
+  )
+}
+
+// Writes to the active instance only. Callers pass the same key names they
+// used before (open_content, hidetag ...), which keeps the diff readable and
+// makes it impossible to leak one instance's draft into another.
+function patchActiveInstance(patch, callback) {
+  loadInstanceState(function (state) {
+    const active = findActiveInstance(state)
+    if (!active) {
+      if (callback) callback(null)
+      return
+    }
+    const next = state.instances.map(function (inst) {
+      return inst.id === active.id ? Object.assign({}, inst, patch) : inst
+    })
+    writeInstances(next, state.activeId, function () {
+      if (callback) callback(Object.assign({}, active, patch))
+    })
+  })
+}
+
+// Creates the first instance, or updates one by id. A new instance becomes
+// active: pressing "add instance" and saving means "connect me to this one".
+function upsertInstance(id, fields, callback) {
+  loadInstanceState(function (state) {
+    let saved = null
+    let next = state.instances
+    if (id) {
+      next = state.instances.map(function (inst) {
+        if (inst.id !== id) return inst
+        saved = Object.assign({}, inst, fields)
+        return saved
+      })
+    }
+    if (!saved) {
+      saved = Object.assign({ id: newInstanceId() }, fields)
+      next = state.instances.concat([saved])
+    }
+    writeInstances(next, id ? state.activeId : saved.id, function () {
+      if (callback) callback(saved, next)
+    })
+  })
+}
+
+function deleteInstance(id, callback) {
+  loadInstanceState(function (state) {
+    const next = state.instances.filter(function (inst) {
+      return inst.id !== id
+    })
+    const activeId = state.activeId === id ? (next[0] ? next[0].id : '') : state.activeId
+    writeInstances(next, activeId, function () {
+      if (callback) callback(next, activeId)
+    })
+  })
+}
+
+function get_info(callback) {
+  chrome.storage.sync.get(GLOBAL_DEFAULTS, function (globalItems) {
+    loadInstanceState(function (state) {
+      const active = findActiveInstance(state) || {}
+      const returnObject = Object.assign({}, GLOBAL_DEFAULTS, globalItems, active)
+      INSTANCE_KEYS.forEach(function (key) {
+        if (returnObject[key] === undefined) returnObject[key] = key === 'resourceIdList' ? [] : ''
+      })
+      returnObject.status = Boolean(active.apiUrl && active.apiTokens)
+      returnObject.instances = state.instances
+      returnObject.activeInstanceId = state.activeId
+      returnObject.instanceName = active.name || ''
+      if (callback) callback(returnObject)
+    })
+  })
 }
 
 function getApiAdapter(info) {
@@ -762,8 +1210,10 @@ get_info(function (info) {
     info.disallowPublic === '1' ? true : info.disallowPublic === '0' ? false : null
   )
   refreshVisibilityPolicy(info)
+  renderInstanceSwitcher(info)
   $('#apiUrl').val(info.apiUrl)
   $('#apiTokens').val(info.apiTokens)
+  $('#instanceNameInput').val(info.instanceName)
   // A draft typed before the popup closed wins over the stored value: it is
   // newer by definition, and it is what the user was in the middle of doing.
   restoreSettingsDraft()
@@ -783,10 +1233,14 @@ get_info(function (info) {
 
 chrome.storage.onChanged.addListener(function (changes, areaName) {
   if (areaName !== 'sync') return
-  if (!changes.resourceIdList) return
-  pendingAttachments = Array.isArray(changes.resourceIdList.newValue)
-    ? changes.resourceIdList.newValue
-    : []
+  if (!changes[INSTANCES_KEY]) return
+  // Only the active instance feeds the upload list; a write to another one
+  // must not blank out what is on screen.
+  const next = Array.isArray(changes[INSTANCES_KEY].newValue) ? changes[INSTANCES_KEY].newValue : []
+  const active = next.filter(function (inst) {
+    return inst && inst.id === instanceState.activeId
+  })[0]
+  pendingAttachments = active && Array.isArray(active.resourceIdList) ? active.resourceIdList : []
   renderUploadList(pendingAttachments)
 })
 
@@ -794,9 +1248,10 @@ chrome.storage.onChanged.addListener(function (changes, areaName) {
 
 //监听输入结束，保存未发送内容到本地
 $("textarea[name=text]").blur(function () {
-  chrome.storage.sync.set(
-    { open_action: 'save_text', open_content: $("textarea[name=text]").val() }
-  )
+  patchActiveInstance({
+    open_action: 'save_text',
+    open_content: $("textarea[name=text]").val()
+  })
 })
 
 $("textarea[name=text]").on('keydown', function (ev) {
@@ -913,7 +1368,7 @@ function appendDroppedText(text) {
   area.value = current ? current + '\n\n' + block + '\n' : block + '\n'
   area.dispatchEvent(new Event('input', { bubbles: true }))
   try {
-    chrome.storage.sync.set({ open_action: 'save_text', open_content: area.value })
+    patchActiveInstance({ open_action: 'save_text', open_content: area.value })
   } catch (_) {
     // best-effort only
   }
@@ -1260,7 +1715,7 @@ function renderUploadList(list) {
 
 function saveUploadList(nextList, callback) {
   pendingAttachments = Array.isArray(nextList) ? nextList : []
-  chrome.storage.sync.set({ resourceIdList: pendingAttachments }, callback)
+  patchActiveInstance({ resourceIdList: pendingAttachments }, callback)
 }
 
 let uploadDragIndex = null
@@ -1527,7 +1982,7 @@ function uploadImage(file, done) {
           pendingAttachments.push(entity)
           // Keep the draft: clearing it here lost the text if the popup closed
           // right after an upload.
-          chrome.storage.sync.set(
+          patchActiveInstance(
             { open_action: '', open_content: $("textarea[name=text]").val(), resourceIdList: pendingAttachments },
             function () {
               settle(true)
@@ -1538,7 +1993,7 @@ function uploadImage(file, done) {
           )
           return
         }
-        chrome.storage.sync.set(
+        patchActiveInstance(
           { open_action: '', open_content: $("textarea[name=text]").val() },
           function () {
             settle(false)
@@ -1548,7 +2003,7 @@ function uploadImage(file, done) {
         )
       },
       function (err) {
-        chrome.storage.sync.set(
+        patchActiveInstance(
           { open_action: '', open_content: $("textarea[name=text]").val() },
           function () {
             settle(false)
@@ -1691,9 +2146,13 @@ function saveSettingsPanel() {
     apiUrl += '/'
   }
   var apiTokens = $('#apiTokens').val()
+  var instanceName = ($('#instanceNameInput').val() || '').trim()
   var customSettings = buildCustomSettingsPayload()
 
   if (!apiUrl && !apiTokens) {
+    // An empty form is "never mind", not "connect to nothing": drop the
+    // pending-new flag so the next real save does not create a stray instance.
+    pendingNewInstance = false
     chrome.storage.sync.set(customSettings, function () {
       clearSettingsDraft()
       $.message({ message: msg('saveSuccess') })
@@ -1721,19 +2180,24 @@ function saveSettingsPanel() {
     }
 
     const known = adapter.KNOWN_ERAS.indexOf(result.era) !== -1
-    chrome.storage.sync.set(
-      Object.assign({}, customSettings, {
-        apiUrl: apiUrl,
-        apiTokens: apiTokens,
-        userid: result.userId != null ? result.userId : '',
-        userRef: result.userRef || '',
-        memoUiPath: result.uiPath || 'memos',
-        apiFlavor: known ? result.flavor : '',
-        apiVersion: result.version || '',
-        apiBase: result.base || '',
-        disallowPublic: result.disallowPublic === true ? '1' : result.disallowPublic === false ? '0' : ''
-      }),
-      function () {
+    const fields = {
+      name: instanceName || defaultInstanceName(apiUrl),
+      apiUrl: apiUrl,
+      apiTokens: apiTokens,
+      userid: result.userId != null ? result.userId : '',
+      userRef: result.userRef || '',
+      memoUiPath: result.uiPath || 'memos',
+      apiFlavor: known ? result.flavor : '',
+      apiVersion: result.version || '',
+      apiBase: result.base || '',
+      disallowPublic: result.disallowPublic === true ? '1' : result.disallowPublic === false ? '0' : ''
+    }
+    // Editing the active instance keeps it active; a save started from "add
+    // instance" creates a new one and switches to it.
+    const targetId = pendingNewInstance ? null : instanceState.activeId || null
+    upsertInstance(targetId, fields, function () {
+      pendingNewInstance = false
+      chrome.storage.sync.set(customSettings, function () {
         clearSettingsDraft()
         // Naming the version turns "saved" into "saved, and this is what it
         // connected to" -- the confirmation the reporter of #9 was missing.
@@ -1742,8 +2206,11 @@ function saveSettingsPanel() {
         $('#blog_info').hide()
         updateServerVersionLabel(result)
         applyVisibilityPolicy(result.disallowPublic)
-      }
-    )
+        get_info(function (info) {
+          renderInstanceSwitcher(info)
+        })
+      })
+    })
   })
 }
 
@@ -1797,7 +2264,7 @@ $(document).on("click","#hideTag",function () {
 })
 
 $('#saveTag').click(function () {
-  chrome.storage.sync.set(
+  patchActiveInstance(
     {
       hidetag: $('#hideInput').val(),
       showtag: $('#showInput').val()
@@ -2058,7 +2525,7 @@ function sendText(preparedContent) {
           resourceIdList: info.resourceIdList
         },
         function (data) {
-          chrome.storage.sync.set(
+          patchActiveInstance(
             { open_action: '', open_content: '', resourceIdList: [] },
             function () {
               $.message({ message: msg('memoSuccess') })
@@ -2072,7 +2539,7 @@ function sendText(preparedContent) {
         function (err) {
           // Keep the draft and the uploaded attachment references so the user
           // can retry after fixing the cause (e.g. visibility not allowed).
-          chrome.storage.sync.set(
+          patchActiveInstance(
             { open_action: '', open_content: content },
             function () {
               $.message({ message: memoErrorText(err) })

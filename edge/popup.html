@@ -12,6 +12,33 @@
   </head>
   <body class="body">
     <div class="title" id="opensite">MEMOS</div>
+    <!-- Instance switcher. The chip shows the active server and opens the list
+         rendered by oper.js; the markup here is only the shell, because every
+         row (name, host, state) comes from chrome.storage. -->
+    <div id="instance_switcher" class="instance-switcher">
+      <button
+        id="instanceToggle"
+        class="instance-toggle"
+        type="button"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        <span id="instanceDot" class="instance-dot" aria-hidden="true"></span>
+        <span id="instanceName" class="instance-name"></span>
+        <svg class="instance-caret" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+      <div id="instanceMenu" class="instance-menu hidden" role="menu" aria-labelledby="instanceToggle">
+        <div class="instance-menu-head">
+          <span id="instanceMenuTitle" class="instance-menu-title"></span>
+          <span id="instanceMenuCount" class="instance-menu-count"></span>
+        </div>
+        <div id="instanceList" class="instance-list"></div>
+        <div class="instance-menu-actions">
+          <button id="instanceAdd" class="instance-action" type="button"></button>
+          <button id="instanceManage" class="instance-action" type="button"></button>
+        </div>
+      </div>
+    </div>
     <div id="lang_switcher" class="lang-switcher">
       <button
         id="langToggle"
@@ -67,9 +94,23 @@
       <path d="M510 366a146 146 0 1 0 1 292 146 146 0 0 0-1-292m87 146a87 87 0 1 1-173-1 87 87 0 0 1 173 1"/>
     </svg></div>
     <div id="blog_info" class="settings-panel">
+      <div class="settings-section" id="instanceSection">
+        <div class="settings-section-title" id="settingsInstancesTitle"></div>
+        <div id="instanceAdminList" class="instance-admin-list"></div>
+        <button id="instanceAdminAdd" class="instance-add" type="button"></button>
+      </div>
       <div class="settings-section">
         <div id="settingsConnectionTitle" class="settings-section-title"></div>
         <div class="settings-section-desc" id="settingsConnectionDesc"></div>
+        <input
+          id="instanceNameInput"
+          class="inputer settings-input"
+          name="instanceName"
+          type="text"
+          value=""
+          maxlength="40"
+          placeholder=""
+        />
         <input
           id="apiUrl"
           class="inputer settings-input"

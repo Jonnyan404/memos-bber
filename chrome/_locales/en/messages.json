@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "Connected to memos $1"
+  },
+  "settingsInstancesTitle": {
+    "message": "Instances"
+  },
+  "instanceMenuTitle": {
+    "message": "Switch instance"
+  },
+  "instanceAdd": {
+    "message": "+ Add instance"
+  },
+  "instanceManage": {
+    "message": "Manage instances"
+  },
+  "instanceCurrent": {
+    "message": "Current"
+  },
+  "instanceSwitch": {
+    "message": "Switch"
+  },
+  "instanceDelete": {
+    "message": "Delete"
+  },
+  "instanceEmpty": {
+    "message": "No instances yet"
+  },
+  "instanceDeleteConfirm": {
+    "message": "Delete \"$1\"?"
+  },
+  "instanceDeleteLast": {
+    "message": "This is the last instance. Deleting it clears the connection."
+  },
+  "instanceDeleted": {
+    "message": "Deleted $1"
+  },
+  "instanceNamePlaceholder": {
+    "message": "Name, e.g. Home"
   }
 }

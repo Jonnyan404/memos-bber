@@ -661,6 +661,139 @@ async function main() {
     )
     if (!versionsOk) process.exitCode = 1
 
+    if (SCENARIO === 'instances') {
+      // The chip is the feature: it has to name the active server, report
+      // whether it answers, and list every instance with the current one
+      // marked. "Add instance" must open an EMPTY form -- reusing the active
+      // values would make the next save silently overwrite that server.
+      const readChip = () =>
+        evaluate(
+          cdp,
+          `(() => {
+            const toggle = document.getElementById('instanceToggle')
+            const name = document.getElementById('instanceName')
+            const dot = document.getElementById('instanceDot')
+            return {
+              exists: Boolean(toggle && name),
+              name: name ? name.textContent.trim() : '',
+              label: toggle ? toggle.getAttribute('aria-label') || '' : '',
+              dot: dot ? dot.className : ''
+            }
+          })()`
+        )
+
+      const snapshot = await evaluate(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get({ memosInstances: [], activeInstanceId: '' }, r))`,
+        { awaitPromise: true }
+      )
+
+      const chip = await readChip()
+      console.log('instance chip:', JSON.stringify(chip))
+      const okChip = chip.exists && Boolean(chip.name) && Boolean(chip.label) && /\bonline\b/.test(chip.dot)
+
+      await evaluate(cdp, `(() => { document.getElementById('instanceToggle').click(); return true })()`)
+      await sleep(150)
+      const menu = await evaluate(
+        cdp,
+        `(() => {
+          const panel = document.getElementById('instanceMenu')
+          const items = Array.from(document.querySelectorAll('#instanceList [data-instance-id]'))
+          const current = items.filter((el) => el.getAttribute('aria-checked') === 'true')
+          const host = items.length ? items[0].querySelector('.instance-item-host') : null
+          return {
+            open: Boolean(panel) && !panel.classList.contains('hidden'),
+            count: items.length,
+            current: current.length,
+            host: host ? host.textContent.trim() : '',
+            add: Boolean(document.getElementById('instanceAdd')),
+            manage: Boolean(document.getElementById('instanceManage'))
+          }
+        })()`
+      )
+      console.log('instance menu:', JSON.stringify(menu))
+      const okMenu = menu.open && menu.count >= 1 && menu.current === 1 && Boolean(menu.host) && menu.add && menu.manage
+
+      await evaluate(cdp, `(() => { document.getElementById('instanceAdd').click(); return true })()`)
+      await sleep(250)
+      const form = await evaluate(
+        cdp,
+        `(() => {
+          const panel = document.getElementById('blog_info')
+          const name = document.getElementById('instanceNameInput')
+          return {
+            visible: Boolean(panel) && panel.offsetParent !== null,
+            emptyName: name ? name.value === '' : false,
+            emptyUrl: document.getElementById('apiUrl').value === '',
+            emptyToken: document.getElementById('apiTokens').value === '',
+            focused: document.activeElement === name
+          }
+        })()`
+      )
+      console.log('instance add form:', JSON.stringify(form))
+      const okForm = form.visible && form.emptyName && form.emptyUrl && form.emptyToken
+
+      await evaluate(
+        cdp,
+        `(() => {
+          const setValue = (el, value) => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+            setter.call(el, value)
+            el.dispatchEvent(new Event('input', { bubbles: true }))
+          }
+          setValue(document.getElementById('instanceNameInput'), 'ci-second')
+          setValue(document.getElementById('apiUrl'), ${JSON.stringify(TARGET_URL)})
+          setValue(document.getElementById('apiTokens'), ${JSON.stringify(TOKEN)})
+          return true
+        })()`
+      )
+      await evaluate(cdp, `(() => { document.getElementById('saveSettings').click(); return true })()`)
+      const added = await waitFor(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.get({ memosInstances: [], activeInstanceId: '' }, (i) => {
+          const list = Array.isArray(i.memosInstances) ? i.memosInstances : []
+          const active = list.filter((x) => x.id === i.activeInstanceId)[0]
+          r(list.length >= 2 && Boolean(active) && active.name === 'ci-second')
+        }))`,
+        20000
+      )
+      console.log(added ? 'PASS a second instance is saved and becomes active' : 'FAIL second instance was not saved')
+
+      await evaluate(cdp, `(() => { document.getElementById('instanceToggle').click(); return true })()`)
+      await sleep(150)
+      const after = await evaluate(
+        cdp,
+        `(() => {
+          const items = Array.from(document.querySelectorAll('#instanceList [data-instance-id]'))
+          return {
+            count: items.length,
+            current: items.filter((el) => el.getAttribute('aria-checked') === 'true').length
+          }
+        })()`
+      )
+      console.log('instance menu after add:', JSON.stringify(after))
+
+      // Leave the profile as it was found: a stale second instance would make
+      // the next local run start from the wrong state.
+      await evaluate(
+        cdp,
+        `new Promise((r) => chrome.storage.sync.set(${JSON.stringify({
+          memosInstances: snapshot.memosInstances,
+          activeInstanceId: snapshot.activeInstanceId
+        })}, r))`,
+        { awaitPromise: true }
+      )
+
+      const okInstances = okChip && okMenu && okForm && added && after.count >= 2 && after.current === 1
+      console.log(
+        okInstances
+          ? 'PASS instance chip names the active server, lists all of them, and adds a new one'
+          : 'FAIL instance switching regressed'
+      )
+      if (!okInstances) process.exitCode = 1
+      return
+    }
+
     if (SCENARIO === 'settings') {
       // Staging: typing a URL then leaving the popup to copy the token must not
       // lose what was typed. Reloading the page is the same lifetime as

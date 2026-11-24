@@ -199,6 +199,47 @@ function joinDraft(existing, block) {
   return head + '\n\n' + body + '\n'
 }
 
+// With several servers configured, the draft the context menu appends to lives
+// on the active instance: a top-level open_content would be a key that no
+// build reads any more, and the text would look simply lost.
+async function appendToActiveDraft(block) {
+  const state = await storageSyncGet({ memosInstances: null, activeInstanceId: '' })
+  const list = Array.isArray(state.memosInstances) ? state.memosInstances : []
+  const active =
+    list.filter((inst) => inst && inst.id === state.activeInstanceId)[0] || list[0] || null
+
+  if (!active) {
+    // Nothing configured yet: keep the legacy key so the popup still opens
+    // with this text in the editor, next to the connection form.
+    const legacy = await storageSyncGet({ open_action: 'save_text', open_content: '' })
+    await new Promise((resolve) => {
+      chrome.storage.sync.set(
+        { open_action: 'save_text', open_content: joinDraft(legacy.open_content, block) },
+        () => {
+          void chrome.runtime.lastError
+          resolve()
+        }
+      )
+    })
+    return
+  }
+
+  const next = list.map((inst) =>
+    inst.id === active.id
+      ? Object.assign({}, inst, {
+          open_action: 'save_text',
+          open_content: joinDraft(inst.open_content, block)
+        })
+      : inst
+  )
+  await new Promise((resolve) => {
+    chrome.storage.sync.set({ memosInstances: next }, () => {
+      void chrome.runtime.lastError
+      resolve()
+    })
+  })
+}
+
 // --------------------------------------------------------------------- menus
 
 let cachedUiLanguage = null
@@ -347,7 +388,6 @@ async function handleMenuClick(info, tab) {
     return
   }
 
-  const items = await storageSyncGet({ open_action: 'save_text', open_content: '' })
   const session = await storageSessionGet({ uploading: false })
   if (session.uploading === true) {
     // An upload is mid-flight and will rewrite open_content when it finishes;
@@ -356,13 +396,7 @@ async function handleMenuClick(info, tab) {
     return
   }
 
-  const next = joinDraft(items.open_content, block)
-  await new Promise((resolve) => {
-    chrome.storage.sync.set({ open_action: 'save_text', open_content: next }, () => {
-      void chrome.runtime.lastError
-      resolve()
-    })
-  })
+  await appendToActiveDraft(block)
 
   setBadge(BADGE_OK, BADGE_OK_COLOR)
   tryOpenActionPopup(tab)

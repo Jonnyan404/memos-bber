@@ -265,5 +265,41 @@
   },
   "saveConnected": {
     "message": "Connecté à memos $1"
+  },
+  "settingsInstancesTitle": {
+    "message": "Instances"
+  },
+  "instanceMenuTitle": {
+    "message": "Changer d'instance"
+  },
+  "instanceAdd": {
+    "message": "+ Ajouter une instance"
+  },
+  "instanceManage": {
+    "message": "Gérer les instances"
+  },
+  "instanceCurrent": {
+    "message": "Active"
+  },
+  "instanceSwitch": {
+    "message": "Changer"
+  },
+  "instanceDelete": {
+    "message": "Supprimer"
+  },
+  "instanceEmpty": {
+    "message": "Aucune instance"
+  },
+  "instanceDeleteConfirm": {
+    "message": "Supprimer « $1 » ?"
+  },
+  "instanceDeleteLast": {
+    "message": "C'est la dernière instance. La supprimer efface la connexion."
+  },
+  "instanceDeleted": {
+    "message": "$1 supprimée"
+  },
+  "instanceNamePlaceholder": {
+    "message": "Nom, ex. Maison"
   }
 }

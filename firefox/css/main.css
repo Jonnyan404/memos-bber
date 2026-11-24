@@ -695,6 +695,276 @@ input.inputer{border-bottom: 1px solid #ccc;width:75%;}
     opacity: 1;
 }
 
+/* Instance switcher. A 24px chip next to the title: the header already holds
+   the gear, the language toggle and two links inside 360px, so the instance
+   name is ellipsised instead of being allowed to push those around. */
+.instance-switcher{
+    position: absolute;
+    left: 6.6rem;
+    top: .55rem;
+}
+
+.instance-toggle{
+    display: inline-flex;
+    align-items: center;
+    gap: .28rem;
+    height: 24px;
+    max-width: 6.2rem;
+    box-sizing: border-box;
+    padding: 0 .45rem;
+    border: 1px solid rgb(209,213,219);
+    border-radius: 999px;
+    background-color: rgb(255,255,255);
+    color: #374151;
+    font-size: .75rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.instance-toggle:hover{
+    border-color: rgb(156,163,175);
+}
+
+.instance-toggle:focus-visible{
+    outline: 2px solid rgb(22,163,74);
+    outline-offset: 1px;
+}
+
+.instance-dot{
+    width: .4rem;
+    height: .4rem;
+    border-radius: 50%;
+    background-color: rgb(156,163,175);
+    flex-shrink: 0;
+}
+
+.instance-dot.online{background-color: rgb(22,163,74);}
+.instance-dot.offline{background-color: rgb(179,38,30);}
+
+.instance-name{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.instance-caret{
+    flex-shrink: 0;
+    opacity: .55;
+}
+
+.instance-menu{
+    position: absolute;
+    top: calc(100% + .35rem);
+    left: -3.4rem;
+    width: 17.25rem;
+    box-sizing: border-box;
+    padding: .25rem;
+    border: 1px solid rgb(229,231,235);
+    border-radius: .5rem;
+    background-color: rgb(255,255,255);
+    box-shadow: 0 8px 24px rgba(15,23,42,.12);
+    z-index: 20;
+}
+
+.instance-menu.hidden{display: none;}
+
+.instance-menu-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .3rem .5rem .45rem;
+}
+
+.instance-menu-title{
+    font-size: .75rem;
+    font-weight: 700;
+    color: #374151;
+}
+
+.instance-menu-count{
+    font-size: .7rem;
+    color: #9ca3af;
+}
+
+.instance-list{
+    display: flex;
+    flex-direction: column;
+}
+
+.instance-item{
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    width: 100%;
+    box-sizing: border-box;
+    padding: .4rem .5rem;
+    border: none;
+    border-radius: .35rem;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.instance-item:hover{background-color: rgb(243,244,246);}
+.instance-item.active{background-color: rgb(220,252,231);}
+
+.instance-item-body{
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.instance-item-name{
+    font-size: .75rem;
+    color: #374151;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.instance-item.active .instance-item-name{
+    color: rgb(22,101,52);
+    font-weight: 700;
+}
+
+.instance-item-host{
+    font-size: .7rem;
+    color: #6b7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.instance-item-mark{
+    flex-shrink: 0;
+    font-size: .7rem;
+    color: rgb(22,101,52);
+}
+
+.instance-menu-actions{
+    display: flex;
+    gap: .35rem;
+    margin-top: .25rem;
+    padding-top: .35rem;
+    border-top: 1px solid rgb(243,244,246);
+}
+
+.instance-action{
+    flex: 1;
+    padding: .35rem;
+    border: none;
+    border-radius: .35rem;
+    background-color: rgb(243,244,246);
+    color: #374151;
+    font-size: .7rem;
+    cursor: pointer;
+}
+
+.instance-action:hover{background-color: rgb(229,231,235);}
+
+/* Settings panel: the instance list above the connection form. The form below
+   edits whichever row is marked "current", so there is exactly one place that
+   writes a connection and it keeps the detect-on-save behaviour. */
+.instance-admin-list{
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+}
+
+.instance-admin-row{
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .35rem .45rem;
+    border-radius: .35rem;
+}
+
+.instance-admin-row.active{background-color: rgb(220,252,231);}
+
+.instance-admin-body{
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.instance-admin-name{
+    font-size: .8rem;
+    color: #374151;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.instance-admin-host{
+    font-size: .7rem;
+    color: #6b7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.instance-admin-badge{
+    flex-shrink: 0;
+    font-size: .7rem;
+    color: rgb(22,101,52);
+}
+
+.instance-admin-btn{
+    flex-shrink: 0;
+    padding: .15rem .45rem;
+    border: 1px solid rgb(209,213,219);
+    border-radius: .3rem;
+    background-color: rgb(255,255,255);
+    color: #6b7280;
+    font-size: .7rem;
+    cursor: pointer;
+}
+
+.instance-admin-btn:hover{
+    border-color: rgb(156,163,175);
+    color: #374151;
+}
+
+.instance-admin-btn.danger:hover{
+    border-color: rgb(179,38,30);
+    color: rgb(179,38,30);
+}
+
+.instance-add{
+    width: 100%;
+    padding: .4rem;
+    border: 1px dashed rgb(203,213,225);
+    border-radius: .35rem;
+    background: transparent;
+    color: #6b7280;
+    font-size: .72rem;
+    cursor: pointer;
+}
+
+.instance-add:hover{
+    border-color: rgb(156,163,175);
+    color: #374151;
+}
+
+.instance-empty{
+    padding: .3rem .45rem;
+    font-size: .72rem;
+    color: #9ca3af;
+}
+
+/* Touch devices get a bigger target without changing the desktop header. */
+@media (pointer: coarse){
+    .instance-toggle{
+        height: 28px;
+        max-width: 7rem;
+    }
+    .instance-item{padding: .55rem .5rem;}
+    .instance-admin-btn{padding: .3rem .55rem;}
+}
+
 
 .tip{
     margin-left: 36%;
