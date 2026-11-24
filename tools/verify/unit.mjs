@@ -430,6 +430,17 @@ eq('bg page and link are separate items', [desktop.state.menus[1].contexts, desk
   const snapshot = await two.api.readAll()
   eq('instances: readAll flattens the active instance', [snapshot.active.name, snapshot.flat.open_content], ['A', 'AAA'])
 
+  // readAll() is what get_info() calls, so it has to migrate too. Skipping
+  // load() here is exactly how an upgraded install ends up showing "no
+  // instances" while its flat keys are still in storage.
+  const flatRead = loadInstances({ apiUrl: 'https://x.test/', apiTokens: 't', open_content: 'from flat' })
+  const flatSnapshot = await flatRead.api.readAll()
+  eq(
+    'instances: readAll migrates a flat install',
+    [flatSnapshot.instances.length, flatSnapshot.runtime.open_content, flatSnapshot.flat.apiUrl],
+    [1, 'from flat', 'https://x.test/']
+  )
+
   await two.api.patch({ disallowPublic: '1' })
   eq('instances: connection fields write the list', two.store.memosInstances[0].disallowPublic, '1')
   eq(

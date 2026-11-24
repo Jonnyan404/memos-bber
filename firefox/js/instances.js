@@ -343,23 +343,19 @@
 
   // Used by get_info() and by the tests: every instance key plus the active
   // runtime, flattened the way the popup consumes it.
+  //
+  // It goes through load() on purpose. Reading the list straight from storage
+  // skips the two migrations, so an upgraded install would show "no instances"
+  // while its old flat keys were still sitting there.
   async function readAll() {
+    const state = await load()
+    const active = findActive(state) || {}
+    const { runtime, files } = await readRuntime(active.id)
     const all = await syncGet(null)
-    const list = Array.isArray(all[INSTANCES_KEY])
-      ? all[INSTANCES_KEY].filter(function (inst) {
-          return inst && inst.id
-        })
-      : []
-    const active =
-      list.filter(function (inst) {
-        return inst.id === all[ACTIVE_KEY]
-      })[0] || list[0] || {}
-    const runtime = Object.assign(runtimeDefaults(), active.id ? all[runtimeKey(active.id)] || {} : {})
-    const files = Object.assign(filesDefaults(), active.id ? all[filesKey(active.id)] || {} : {})
     const flat = Object.assign({}, all, active, runtime, files)
     return {
-      instances: list,
-      activeId: all[ACTIVE_KEY] || '',
+      instances: state.instances,
+      activeId: state.activeId,
       active: active,
       runtime: runtime,
       files: files,
